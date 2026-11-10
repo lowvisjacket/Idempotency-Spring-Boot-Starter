@@ -1,7 +1,7 @@
 package io.github.lowvisjacket.idempotency.web;
 
 import io.github.lowvisjacket.idempotency.annotation.Idempotent;
-import io.github.lowvisjacket.idempotency.store.RedisLookup;
+import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -10,10 +10,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 public class IdempotencyInterceptor implements HandlerInterceptor {
 
-    private final RedisLookup redisLookup;
+    private final IdempotencyStore store;
 
-    public IdempotencyInterceptor(RedisLookup redisLookup) {
-        this.redisLookup = redisLookup;
+    public IdempotencyInterceptor(IdempotencyStore store) {
+        this.store = store;
     }
 
     @Override
@@ -27,6 +27,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         if (idempotent == null) return true;
 
         String key = request.getHeader("Idempotency-Key");
-        return redisLookup.keyExists(key);
+        return store.exists(key);
     }
 }

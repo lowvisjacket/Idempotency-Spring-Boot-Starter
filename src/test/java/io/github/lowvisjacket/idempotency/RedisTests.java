@@ -2,7 +2,7 @@ package io.github.lowvisjacket.idempotency;
 
 
 import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
-import io.github.lowvisjacket.idempotency.store.RedisLookup;
+import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.lowvisjacket.idempotency.model.Status;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +23,7 @@ public class RedisTests {
     private static final String KEY = "TEST-123";
 
     @Autowired
-    RedisLookup redisLookup;
+    IdempotencyStore store;
 
     @Autowired
     StringRedisTemplate redisTemplate;
@@ -42,20 +42,20 @@ public class RedisTests {
 
     @Test
     void claimingNewKeyReturnsTrue() {
-        assertTrue(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofDays(1))));
+        assertTrue(store.claim(pendingRecord(Duration.ofDays(1))));
     }
 
     @Test
     void claimingExistingKeyReturnsFalse() {
-        redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofDays(1)));
-        assertFalse(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofDays(1))));
+        store.claim(pendingRecord(Duration.ofDays(1)));
+        assertFalse(store.claim(pendingRecord(Duration.ofDays(1))));
     }
 
     @Test
     void expiryReturnsTrue() throws InterruptedException {
-        assertTrue(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofSeconds(2))));
+        assertTrue(store.claim(pendingRecord(Duration.ofSeconds(2))));
         Thread.sleep(3000);
-        assertTrue(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofSeconds(2))));
+        assertTrue(store.claim(pendingRecord(Duration.ofSeconds(2))));
     }
 
     private IdempotencyRecord responseRecord(Duration ttl) {
@@ -69,9 +69,9 @@ public class RedisTests {
         IdempotencyRecord record = pendingRecord(Duration.ofSeconds(10));
         record.setHeader("Test");
         record.setBody("Hello World");
-        assertTrue(redisLookup.addKeyIfAbsent(record));
+        assertTrue(store.claim(record));
 
-        IdempotencyRecord after = redisLookup.getIdempotencyRecord(redisLookup.getIdempotencyRecordJSON(KEY));
+        IdempotencyRecord after = store.find(KEY).orElseThrow();
 
         assertEquals(Status.PENDING, after.getStatus());
         assertEquals("fingerprint", after.getFingerprint());
@@ -82,11 +82,11 @@ public class RedisTests {
 
     @Test
     void completingKeyStoresCompletedRecord() {
-        assertTrue(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofSeconds(10))));
+        assertTrue(store.claim(pendingRecord(Duration.ofSeconds(10))));
 
-        assertTrue(redisLookup.completeRecord(responseRecord(Duration.ofSeconds(10))));
+        assertTrue(store.complete(responseRecord(Duration.ofSeconds(10))));
 
-        IdempotencyRecord after = redisLookup.getIdempotencyRecord(redisLookup.getIdempotencyRecordJSON(KEY));
+        IdempotencyRecord after = store.find(KEY).orElseThrow();
         assertEquals(Status.COMPLETED, after.getStatus());
         assertEquals("Hello World", after.getBody());
         assertEquals(200, after.getHttpStatus());
@@ -94,19 +94,52 @@ public class RedisTests {
 
     @Test
     void completingKeyResetsTTL() {
-        assertTrue(redisLookup.addKeyIfAbsent(pendingRecord(Duration.ofSeconds(5))));
+        assertTrue(store.claim(pendingRecord(Duration.ofSeconds(5))));
 
-        assertTrue(redisLookup.completeRecord(responseRecord(Duration.ofSeconds(100))));
+        assertTrue(store.complete(responseRecord(Duration.ofSeconds(100))));
 
-        Long ttl = redisLookup.getTTLFromKey(KEY);
+        long ttl = store.getRemainingTtl(KEY).orElseThrow().toSeconds();
         assertTrue(ttl > 90 && ttl <= 100, "expected TTL near 100 but was " + ttl);
     }
 
     @Test
-    void completingMissingKeyReturnsFalseAndCreatesNothing() {
-        assertFalse(redisLookup.completeRecord(responseRecord(Duration.ofSeconds(100))));
+    void findReturnsRecordWithKeyPopulated() {
+        store.claim(pendingRecord(Duration.ofSeconds(10)));
 
-        assertFalse(redisLookup.keyExists(KEY));
+        assertEquals(KEY, store.find(KEY).orElseThrow().getKey());
+    }
+
+    @Test
+    void findOnMissingKeyReturnsEmpty() {
+        assertTrue(store.find(KEY).isEmpty());
+    }
+
+    @Test
+    void existsReflectsWhetherKeyIsStored() {
+        assertFalse(store.exists(KEY));
+
+        store.claim(pendingRecord(Duration.ofSeconds(10)));
+
+        assertTrue(store.exists(KEY));
+    }
+
+    @Test
+    void remainingTtlIsEmptyForMissingKey() {
+        assertTrue(store.getRemainingTtl(KEY).isEmpty());
+    }
+
+    @Test
+    void remainingTtlIsEmptyForKeyWithNoExpiry() {
+        redisTemplate.opsForValue().set(KEY, "{}");
+
+        assertTrue(store.getRemainingTtl(KEY).isEmpty());
+    }
+
+    @Test
+    void completingMissingKeyReturnsFalseAndCreatesNothing() {
+        assertFalse(store.complete(responseRecord(Duration.ofSeconds(100))));
+
+        assertFalse(store.exists(KEY));
     }
 
 }
