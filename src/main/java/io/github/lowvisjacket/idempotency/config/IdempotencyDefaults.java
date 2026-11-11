@@ -31,6 +31,9 @@ public final class IdempotencyDefaults {
      */
     public static final String BODY_EXCEEDS_CAP_ATTRIBUTE = "io.github.lowvisjacket.idempotency.BODY_EXCEEDS_CAP";
 
+    /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
+    public static final String REPLAY_HEADER = "Idempotency-Replayed";
+
     // --- Stored keys ---
 
     /** Start of every key this library writes to the store. The "v1" lets the key format change safely later. */
@@ -43,6 +46,12 @@ public final class IdempotencyDefaults {
     public static final String ANONYMOUS_SEGMENT = "anonymous";
 
     // --- Time ---
+
+    /** {@code Retry-After} sent with a 409 (a request with this key is still running). */
+    public static final Duration PENDING_RETRY_AFTER = Duration.ofSeconds(1);
+
+    /** {@code Retry-After} sent with a 503 (the store cannot be reached). */
+    public static final Duration STORE_RETRY_AFTER = Duration.ofSeconds(5);
 
     /** Default time a stored record is kept, in the same text format @Idempotent(ttl = ...) accepts. */
     public static final String DEFAULT_TTL = "24h";
