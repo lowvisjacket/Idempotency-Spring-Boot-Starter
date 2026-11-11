@@ -31,6 +31,17 @@ public final class IdempotencyDefaults {
      */
     public static final String BODY_EXCEEDS_CAP_ATTRIBUTE = "io.github.lowvisjacket.idempotency.BODY_EXCEEDS_CAP";
 
+    // --- Stored keys ---
+
+    /** Start of every key this library writes to the store. The "v1" lets the key format change safely later. */
+    public static final String KEY_PREFIX = "idempotency:v1:";
+
+    /** Segment that follows the prefix for requests made by an identified caller (then the caller hash, then the key). */
+    public static final String USER_SEGMENT = "user";
+
+    /** Segment that follows the prefix for requests with no identified caller (then the key). */
+    public static final String ANONYMOUS_SEGMENT = "anonymous";
+
     // --- Time ---
 
     /** Default time a stored record is kept, in the same text format @Idempotent(ttl = ...) accepts. */
