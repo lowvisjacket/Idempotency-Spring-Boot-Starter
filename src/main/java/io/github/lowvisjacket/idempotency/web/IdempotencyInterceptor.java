@@ -1,6 +1,7 @@
 package io.github.lowvisjacket.idempotency.web;
 
 import io.github.lowvisjacket.idempotency.annotation.Idempotent;
+import io.github.lowvisjacket.idempotency.config.IdempotencyDefaults;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +27,12 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         }
         if (idempotent == null) return true;
 
-        String key = request.getHeader("Idempotency-Key");
+        /**
+         * REVIEW (placeholder): this uses the default header name and returns "does the key exist". The real flow
+         * should use idempotent.header() and follow the behavior table (claim / 409 / replay / 422). That is the
+         * interceptor phase on the roadmap, so no rush.
+         */
+        String key = request.getHeader(IdempotencyDefaults.IDEMPOTENCY_KEY_HEADER);
         return store.exists(key);
     }
 }

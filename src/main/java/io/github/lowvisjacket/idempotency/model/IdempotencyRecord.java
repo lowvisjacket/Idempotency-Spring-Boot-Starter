@@ -5,7 +5,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.Duration;
+import java.util.HexFormat;
 
 @Getter
 @NoArgsConstructor
@@ -20,7 +25,6 @@ public class IdempotencyRecord {
     private int httpStatus;
     @JsonIgnore
     private Duration ttl;
-
     public IdempotencyRecord(String key, String fingerprint, String header, String body, int httpStatus, Duration ttl) {
         this.key = key;
         this.fingerprint = fingerprint;
