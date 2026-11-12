@@ -1,6 +1,7 @@
 # Idempotency Spring Boot Starter
 
 [![CI](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml/badge.svg)](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml)
+![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
 [![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.x-6DB33F.svg)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -23,9 +24,6 @@ Idempotency-Key: abc123             Idempotency-Key: abc123             Idempote
   -> 201 Created (code ran)           -> 201 Created (replayed)           -> 201 Created (replayed)
                                          Idempotency-Replayed: true          Idempotency-Replayed: true
 ```
-
-> **Status: in development, not yet released.** The behaviour below is implemented and tested; the coordinates in the
-> quick start are what the first release will use.
 
 ## Requirements
 
