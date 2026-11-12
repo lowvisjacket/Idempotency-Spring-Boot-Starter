@@ -51,8 +51,6 @@ class IdempotencyAutoConfigurationTests {
                 .orElseThrow(() -> new AssertionError("no filter registration for " + filterType.getSimpleName()));
     }
 
-    // ---- what gets created
-
     @Test
     void createsEveryBeanInAServletApplication() {
         web.run(context -> {
@@ -103,7 +101,6 @@ class IdempotencyAutoConfigurationTests {
             for (Class<?> type : List.of(RequestFilter.class, ResponseCaptureFilter.class)) {
                 FilterRegistrationBean<?> registration = registrationFor(context, type);
                 assertThat(registration.isEnabled()).isTrue();
-                // no patterns at all means "/*" in a FilterRegistrationBean; both spellings are fine
                 List<String> patterns = List.copyOf(registration.getUrlPatterns());
                 assertThat(patterns.isEmpty() || patterns.equals(List.of("/*"))).isTrue();
             }
@@ -136,8 +133,6 @@ class IdempotencyAutoConfigurationTests {
         web.withPropertyValues("idempotency.max-response-body-bytes=-5").run(context ->
                 assertThat(context).hasFailed());
     }
-
-    // ---- when it stays out of the way
 
     @Test
     void createsNothingInANonWebApplication() {
@@ -182,8 +177,6 @@ class IdempotencyAutoConfigurationTests {
                 });
     }
 
-    // ---- the application can replace anything
-
     @Test
     void applicationFingerprintWins() {
         Fingerprint mine = new Fingerprint();
@@ -222,12 +215,9 @@ class IdempotencyAutoConfigurationTests {
                         context.getBean(IdempotencyInterceptor.class), "store")).isSameAs(mine));
     }
 
-    // ---- ordering between the two auto-configurations
-
     @Test
     void storeConfigurationIsProcessedBeforeTheMainOneWhateverTheListingOrder() {
         new WebApplicationContextRunner()
-                // listed "wrong way round" on purpose: Boot must sort them by the "after" declarations
                 .withConfiguration(AutoConfigurations.of(
                         IdempotencyAutoConfiguration.class,
                         IdempotencyStoreAutoConfiguration.class,
@@ -247,8 +237,6 @@ class IdempotencyAutoConfigurationTests {
         assertThat(declaration.after()).contains(IdempotencyStoreAutoConfiguration.class);
     }
 
-    // ---- registration with Spring Boot
-
     @Test
     void bothAutoConfigurationsAreListedInTheImportsFile() {
         List<String> listed = ImportCandidates.load(AutoConfiguration.class, getClass().getClassLoader())
@@ -257,8 +245,6 @@ class IdempotencyAutoConfigurationTests {
                 IdempotencyAutoConfiguration.class.getName(),
                 IdempotencyStoreAutoConfiguration.class.getName());
     }
-
-    // ---- a library must not push beans into applications that scan its package
 
     @Test
     void libraryClassesAreNotComponentScannable() {

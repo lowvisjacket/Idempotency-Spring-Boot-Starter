@@ -31,7 +31,6 @@ public final class StoredKeys {
 
 
     private StoredKeys() {
-        // Static helper only; never instantiated.
     }
 
     /**
@@ -65,11 +64,9 @@ public final class StoredKeys {
     private static String hashCaller(String callerName) {
         String normalized = Normalizer.normalize(callerName, Normalizer.Form.NFC);
         try {
-            // A new digest per call: MessageDigest is not thread-safe.
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(normalized.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
-            // Every Java runtime must support SHA-256, so this cannot happen.
             throw new IllegalStateException("SHA-256 is required on every JVM", e);
         }
     }

@@ -26,7 +26,6 @@ public final class IdempotencyKeyValidator {
     private static final Pattern VALID_KEY = Pattern.compile("[!-~]+");
 
     private IdempotencyKeyValidator() {
-        // Static helper only; never instantiated.
     }
 
     /**
@@ -43,7 +42,6 @@ public final class IdempotencyKeyValidator {
         if (key.isBlank()) {
             throw new InvalidIdempotencyKeyException("Idempotency key must not be blank");
         }
-        // Checked before the characters so an enormous key is rejected without scanning all of it.
         if (key.length() > IdempotencyDefaults.MAX_KEY_LENGTH) {
             throw new InvalidIdempotencyKeyException(
                     "Idempotency key must be at most " + IdempotencyDefaults.MAX_KEY_LENGTH + " characters");

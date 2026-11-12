@@ -32,15 +32,10 @@ import tools.jackson.databind.ObjectMapper;
  *
  * @see IdempotencyAutoConfiguration
  */
-// TODO(you): @AutoConfiguration(after = DataRedisAutoConfiguration.class). In Spring Boot 4 that class is
-//  org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration. If you would rather not import it
-//  (it is an optional dependency too), use afterName = "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration".
 @AutoConfiguration(after = DataRedisAutoConfiguration.class)
 public class IdempotencyStoreAutoConfiguration {
 
     /** The Redis choice. Only read by Spring when Redis is on the classpath. */
-    // TODO(you): @Configuration(proxyBeanMethods = false) + @ConditionalOnClass(StringRedisTemplate.class)
-    //  + @ConditionalOnBean(StringRedisTemplate.class)
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(StringRedisTemplate.class)
     @ConditionalOnBean(StringRedisTemplate.class)
@@ -51,7 +46,6 @@ public class IdempotencyStoreAutoConfiguration {
          * @param objectMapper  the application's Jackson mapper, used to write records as JSON
          * @return the Redis-backed store
          */
-        // TODO(you): @Bean + @ConditionalOnMissingBean(IdempotencyStore.class): the user's own store always wins.
         @Bean
         @ConditionalOnMissingBean(IdempotencyStore.class)
         RedisIdempotencyStore redisIdempotencyStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {

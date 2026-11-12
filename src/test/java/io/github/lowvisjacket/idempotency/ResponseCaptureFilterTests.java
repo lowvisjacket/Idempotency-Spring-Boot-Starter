@@ -59,10 +59,6 @@ class ResponseCaptureFilterTests {
     private final ResponseCaptureFilter filter = new ResponseCaptureFilter(store);
     private final IdempotencyRecord claim = new IdempotencyRecord(KEY, "fp-123", null, null, 0, Duration.ofSeconds(90));
 
-    // =====================================================================================================
-    // Helpers
-    // =====================================================================================================
-
     private static byte[] utf8(String text) {
         return text.getBytes(StandardCharsets.UTF_8);
     }
@@ -106,10 +102,6 @@ class ResponseCaptureFilterTests {
         throw (T) failure;
     }
 
-    // =====================================================================================================
-    // A request that claimed nothing is left alone
-    // =====================================================================================================
-
     @ParameterizedTest(name = "status {0} with no claim")
     @ValueSource(ints = {200, 404, 500})
     void aRequestThatClaimedNothingIsNeverTouched(int status) throws Exception {
@@ -152,10 +144,6 @@ class ResponseCaptureFilterTests {
         assertSame(failure, thrown);
         assertEquals(0, store.totalCalls());
     }
-
-    // =====================================================================================================
-    // Completing: what is saved
-    // =====================================================================================================
 
     @Test
     void aFinishedRequestIsSavedWithItsStatusBodyFingerprintAndTtl() throws Exception {
@@ -233,7 +221,7 @@ class ResponseCaptureFilterTests {
         MockHttpServletResponse real = run((request, response) -> {
             interceptorWins(request, response, claim);
             response.setCharacterEncoding("UTF-8");
-            response.getWriter().write(text);      // deliberately not flushed
+            response.getWriter().write(text);
         });
 
         assertEquals(text, stored().getBody());
@@ -273,10 +261,6 @@ class ResponseCaptureFilterTests {
         assertEquals("/orders/7", real.getHeader("Location"));
         assertEquals(List.of("a", "b"), real.getHeaders("X-Many"));
     }
-
-    // =====================================================================================================
-    // The Content-Type is saved with the response, so a replay can send it again
-    // =====================================================================================================
 
     /** A claimed request whose controller sets the given Content-Type and writes the given bytes. */
     private MockHttpServletResponse serveTyped(String contentType, byte[] body) throws Exception {
@@ -376,8 +360,6 @@ class ResponseCaptureFilterTests {
         assertEquals(1, store.deletes.get());
     }
 
-    // ---- a declared charset that is not UTF-8 cannot be replayed faithfully
-
     @ParameterizedTest(name = "{0} with non-ASCII bytes is not saved")
     @ValueSource(strings = {"text/plain;charset=ISO-8859-1", "text/plain; charset=windows-1252",
             "application/json;charset=UTF-16", "text/plain;charset=no-such-charset"})
@@ -444,10 +426,6 @@ class ResponseCaptureFilterTests {
         assertEquals("order 7", real.getContentAsString());
     }
 
-    // =====================================================================================================
-    // Deleting: responses that must not be replayed
-    // =====================================================================================================
-
     @ParameterizedTest(name = "status {0} deletes the claim")
     @ValueSource(ints = {500, 501, 502, 503, 504, 599})
     void aServerErrorDeletesTheClaimSoTheClientCanRetry(int status) throws Exception {
@@ -496,7 +474,7 @@ class ResponseCaptureFilterTests {
 
         small.doFilter(new MockHttpServletRequest("POST", "/orders"), real, (request, response) -> {
             interceptorWins(request, response, claim);
-            response.getOutputStream().write(utf8("123456789"));      // 9 bytes, limit 8
+            response.getOutputStream().write(utf8("123456789"));
         });
 
         assertFalse(store.data.containsKey(KEY));
@@ -519,10 +497,6 @@ class ResponseCaptureFilterTests {
         assertEquals("12345678", real.getContentAsString());
     }
 
-    // =====================================================================================================
-    // Order: the record is final before the client sees anything
-    // =====================================================================================================
-
     @Test
     void theRecordIsCompletedBeforeTheClientCanSeeTheBody() throws Exception {
         seed();
@@ -540,14 +514,10 @@ class ResponseCaptureFilterTests {
         assertEquals("hello", real.getContentAsString(), "and the body must be sent afterwards");
     }
 
-    // =====================================================================================================
-    // The store misbehaves: the client still gets the response
-    // =====================================================================================================
-
     @Test
     void ifTheKeyExpiredMidRequestTheResponseStillGoesOutAndNothingElseHappens() throws Exception {
         seed();
-        store.data.remove(KEY);       // complete() will answer false
+        store.data.remove(KEY);
 
         MockHttpServletResponse real = run((request, response) -> {
             interceptorWins(request, response, claim);
@@ -589,10 +559,6 @@ class ResponseCaptureFilterTests {
         assertEquals(503, real.getStatus());
         assertEquals("try later", real.getContentAsString());
     }
-
-    // =====================================================================================================
-    // The controller fails
-    // =====================================================================================================
 
     static Stream<Throwable> failures() {
         return Stream.of(
@@ -647,10 +613,6 @@ class ResponseCaptureFilterTests {
 
         assertSame(failure, thrown, "the store's exception must not replace the controller's");
     }
-
-    // =====================================================================================================
-    // Async, construction, concurrency
-    // =====================================================================================================
 
     @Test
     void whenAsyncProcessingStartedNothingIsDecidedYet() throws Exception {

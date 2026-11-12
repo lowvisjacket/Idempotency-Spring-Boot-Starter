@@ -49,8 +49,6 @@ public class DeleteRecordTests {
         return new IdempotencyRecord(key, "fingerprint", "Test", "Hello World", 200, ttl);
     }
 
-    // --- Basic behavior ---
-
     @Test
     void deletingExistingKeyReturnsTrueAndRemovesIt() {
         assertTrue(store.claim(record(KEY, Duration.ofMinutes(1))));
@@ -81,8 +79,6 @@ public class DeleteRecordTests {
 
         assertFalse(store.delete(KEY));
     }
-
-    // --- The retry case: the reason delete exists ---
 
     @Test
     void keyCanBeClaimedAgainAfterDelete() {
@@ -124,7 +120,6 @@ public class DeleteRecordTests {
 
     @Test
     void lateCompletionAfterDeleteDoesNotResurrectTheKey() {
-        // A request fails (5xx) and its key is deleted, then a slow completion arrives.
         store.claim(record(KEY, Duration.ofMinutes(1)));
         store.delete(KEY);
 
@@ -134,8 +129,6 @@ public class DeleteRecordTests {
         assertFalse(store.complete(late));
         assertFalse(store.exists(KEY));
     }
-
-    // --- Isolation: delete must only touch the key it was given ---
 
     @Test
     void deletingOneKeyLeavesOtherKeysAlone() {
@@ -196,8 +189,6 @@ public class DeleteRecordTests {
         assertFalse(store.exists(KEY));
     }
 
-    // --- Garbage in ---
-
     @Test
     void emptyKeyReturnsFalseWithoutAffectingOtherKeys() {
         store.claim(record(KEY, Duration.ofMinutes(1)));
@@ -211,8 +202,6 @@ public class DeleteRecordTests {
     void nullKeyFailsLoudlyInsteadOfSilentlySucceeding() {
         assertThrows(Exception.class, () -> store.delete(null));
     }
-
-    // --- Concurrency ---
 
     @Test
     void whenManyThreadsDeleteTheSameKeyExactlyOneWins() throws Exception {
@@ -244,8 +233,6 @@ public class DeleteRecordTests {
 
     @Test
     void whenDeleteRacesWithReclaimTheKeyEndsUpClaimedOrFreeNeverCorrupted() throws Exception {
-        // Repeatedly: delete and re-claim at the same time. Whatever the order,
-        // the stored value must be a valid PENDING record or the key must be absent.
         for (int round = 0; round < 50; round++) {
             store.delete(KEY);
             store.claim(record(KEY, Duration.ofMinutes(1)));

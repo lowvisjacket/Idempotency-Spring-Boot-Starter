@@ -23,8 +23,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TtlParserTests {
 
-    // --- Valid input ---
-
     @ParameterizedTest(name = "\"{0}\" parses to {1} seconds")
     @CsvSource({
             "1s,       1",
@@ -62,8 +60,6 @@ class TtlParserTests {
         assertEquals(Duration.ofHours(24), TtlParser.parse(IdempotencyDefaults.DEFAULT_TTL));
     }
 
-    // --- Invalid input ---
-
     @ParameterizedTest(name = "[{index}] null / empty is rejected")
     @NullAndEmptySource
     void nullAndEmptyAreRejected(String text) {
@@ -72,22 +68,22 @@ class TtlParserTests {
 
     @ParameterizedTest(name = "\"{0}\" is rejected")
     @ValueSource(strings = {
-            " ", "   ",                // blank
-            "24",                      // number without a unit
-            "h", "d",                  // unit without a number
-            "-5h", "+5h",              // signs
-            "0s", "0h", "0d", "000m",  // zero is not a usable TTL
-            "1.5h", "1,5h", ".5h",     // decimals
-            "5w", "5y", "5ms", "5x",   // unsupported units
-            "5hh", "5hm",              // extra characters
-            "5 h", "5\th",             // space between number and unit
-            "h5",                      // wrong order
-            "24h30m", "1h 30m",        // combinations are not supported
-            "PT24H", "P1D",            // ISO-8601 is not supported
-            "1e3s",                    // scientific notation
-            "five hours", "abc",       // words
-            "0x10s",                   // hexadecimal
-            "24h;", "24h!"             // junk after the unit
+            " ", "   ",
+            "24",
+            "h", "d",
+            "-5h", "+5h",
+            "0s", "0h", "0d", "000m",
+            "1.5h", "1,5h", ".5h",
+            "5w", "5y", "5ms", "5x",
+            "5hh", "5hm",
+            "5 h", "5\th",
+            "h5",
+            "24h30m", "1h 30m",
+            "PT24H", "P1D",
+            "1e3s",
+            "five hours", "abc",
+            "0x10s",
+            "24h;", "24h!"
     })
     void malformedValuesAreRejected(String text) {
         assertThrows(IllegalArgumentException.class, () -> TtlParser.parse(text));
@@ -100,20 +96,18 @@ class TtlParserTests {
 
     @ParameterizedTest(name = "\"{0}\" (non-ASCII digits) is rejected")
     @ValueSource(strings = {
-            "٣h",          // ARABIC-INDIC DIGIT THREE
-            "２４h",    // FULLWIDTH "24"
-            "१d"           // DEVANAGARI DIGIT ONE
+            "٣h",
+            "２４h",
+            "१d"
     })
     void nonAsciiDigitsAreRejected(String text) {
         assertThrows(IllegalArgumentException.class, () -> TtlParser.parse(text));
     }
 
-    // --- Overflow: must be an IllegalArgumentException, not a leaked NumberFormat/Arithmetic exception ---
-
     @ParameterizedTest(name = "\"{0}\" is rejected without leaking another exception type")
     @ValueSource(strings = {
-            "99999999999999999999d",       // too many digits for a long
-            "9223372036854775807d",       // fits a long but overflows a Duration
+            "99999999999999999999d",
+            "9223372036854775807d",
             "9223372036854775807h"
     })
     void overflowingValuesAreRejectedCleanly(String text) {
@@ -132,13 +126,11 @@ class TtlParserTests {
         assertEquals(TtlParser.parse("30m"), TtlParser.parse("30m"));
     }
 
-    // --- Added in review: the size limit should depend on the resulting time, not on the number alone ---
-
     @ParameterizedTest(name = "\"{0}\" equals {1} seconds")
     @CsvSource({
-            "86400s,   86400",     // 24 hours written in seconds
-            "10080m,   604800",    // 7 days written in minutes
-            "168h,     604800",    // 7 days written in hours
+            "86400s,   86400",
+            "10080m,   604800",
+            "168h,     604800",
             "100000s,  100000"
     })
     void bigNumbersInSmallUnitsAreAccepted(String text, long expectedSeconds) {

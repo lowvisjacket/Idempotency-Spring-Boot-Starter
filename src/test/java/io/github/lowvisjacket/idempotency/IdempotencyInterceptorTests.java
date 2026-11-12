@@ -65,10 +65,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class IdempotencyInterceptorTests {
 
-    // =====================================================================================================
-    // Test controllers
-    // =====================================================================================================
-
     public static class Controller {
         @Idempotent public void create() { }
         @Idempotent(ttl = "90s") public void shortTtl() { }
@@ -83,24 +79,20 @@ class IdempotencyInterceptorTests {
         @Idempotent(ttl = "1h") public void override() { }
     }
 
-    // =====================================================================================================
-    // Fake store
-    // =====================================================================================================
-
     /** In-memory store with an atomic claim, call counters, and switches to fail or lose on purpose. */
     static class FakeStore implements IdempotencyStore {
         final Map<String, IdempotencyRecord> data = new ConcurrentHashMap<>();
         final List<IdempotencyRecord> claimed = Collections.synchronizedList(new ArrayList<>());
         final AtomicInteger claims = new AtomicInteger();
         final AtomicInteger finds = new AtomicInteger();
-        final AtomicInteger writes = new AtomicInteger();   // complete + delete
+        final AtomicInteger writes = new AtomicInteger();
         final AtomicInteger completes = new AtomicInteger();
         final AtomicInteger deletes = new AtomicInteger();
         volatile RuntimeException completeFailure;
         volatile RuntimeException deleteFailure;
         /** Called inside {@code complete}, before the record is stored (to look at the world at that moment). */
         volatile java.util.function.Consumer<IdempotencyRecord> onComplete;
-        final AtomicInteger others = new AtomicInteger();   // exists + getRemainingTtl
+        final AtomicInteger others = new AtomicInteger();
         volatile RuntimeException claimFailure;
         volatile RuntimeException findFailure;
         /** The next N claim calls answer false without storing anything (a lost race, or a record that vanished). */
@@ -177,10 +169,6 @@ class IdempotencyInterceptorTests {
             return Optional.empty();
         }
     }
-
-    // =====================================================================================================
-    // Fixtures and helpers
-    // =====================================================================================================
 
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final FakeStore store = new FakeStore();
@@ -279,10 +267,6 @@ class IdempotencyInterceptorTests {
         assertNull(response.getHeader(IdempotencyDefaults.REPLAY_HEADER));
     }
 
-    // =====================================================================================================
-    // Endpoints that are not @Idempotent are never touched
-    // =====================================================================================================
-
     @Test
     void aPlainEndpointRunsAndNeverTouchesTheStore() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -322,7 +306,6 @@ class IdempotencyInterceptorTests {
 
     @Test
     void aHandlerThatIsNotAControllerMethodIsIgnored() throws Exception {
-        // For example a static resource handler: no HandlerMethod, so nothing to check and no key needed.
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertTrue(interceptor.preHandle(new MockHttpServletRequest("GET", "/logo.png"), response, "not a HandlerMethod"));
@@ -330,10 +313,6 @@ class IdempotencyInterceptorTests {
 
         assertEquals(0, store.totalCalls());
     }
-
-    // =====================================================================================================
-    // A. Key validation: 400, the controller does not run, the store is never touched
-    // =====================================================================================================
 
     @Test
     void aMissingKeyIsRefusedWith400() throws Exception {
@@ -425,7 +404,7 @@ class IdempotencyInterceptorTests {
     void aCustomHeaderNameIsHonoredAndTheDefaultHeaderIsIgnored() throws Exception {
         HandlerMethod custom = handler(new Controller(), "customHeader");
         MockHttpServletRequest request = post("/orders", BODY);
-        request.addHeader("Idempotency-Key", "bad key");   // default header: must be ignored
+        request.addHeader("Idempotency-Key", "bad key");
         request.addHeader("X-Request-Id", "good-key");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -466,10 +445,6 @@ class IdempotencyInterceptorTests {
         assertEquals(0, store.totalCalls());
     }
 
-    // =====================================================================================================
-    // B. A new key: claim, store a PENDING record, run the controller
-    // =====================================================================================================
-
     @Test
     void aNewKeyIsClaimedOnceAndTheControllerRunsWithTheResponseUntouched() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -491,7 +466,6 @@ class IdempotencyInterceptorTests {
         IdempotencyRecord record = store.claimed.get(0);
         assertEquals(storedKey(null, "k1"), record.getKey());
         assertEquals(Status.PENDING, record.getStatus());
-        // A mock request body can be read only once, so the expected value comes from an identical fresh request.
         assertEquals(fingerprintOf(validPost("k1")), record.getFingerprint());
         assertEquals(Duration.ofHours(24), record.getTtl(), "default ttl");
         assertNull(record.getBody(), "no response exists yet");
@@ -521,7 +495,6 @@ class IdempotencyInterceptorTests {
 
     @Test
     void aBadTtlInTheAnnotationFailsBeforeAnythingIsStored() throws Exception {
-        // If the claim happened first, a PENDING record would sit in the store until it expired.
         assertThrows(IllegalArgumentException.class,
                 () -> run(validPost("k1"), new MockHttpServletResponse(), handler(new Controller(), "badTtl")));
 
@@ -553,10 +526,6 @@ class IdempotencyInterceptorTests {
         assertEquals(BODY, new String(wrapped.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
         assertEquals(BODY, wrapped.getReader().readLine());
     }
-
-    // =====================================================================================================
-    // C. A key that is still PENDING: 409, nothing changes
-    // =====================================================================================================
 
     @Test
     void aPendingKeyIsRefusedWith409AndARetryAfter() throws Exception {
@@ -592,10 +561,6 @@ class IdempotencyInterceptorTests {
 
         assertNull(response.getHeader(IdempotencyDefaults.REPLAY_HEADER));
     }
-
-    // =====================================================================================================
-    // D. COMPLETED with the same fingerprint: replay
-    // =====================================================================================================
 
     @ParameterizedTest(name = "replays status {0}")
     @ValueSource(ints = {200, 201, 202, 204, 400, 404, 409, 418, 422})
@@ -718,10 +683,6 @@ class IdempotencyInterceptorTests {
         assertEquals("saved", response.getContentAsString());
     }
 
-    // =====================================================================================================
-    // E. COMPLETED with a different fingerprint: 422, and the saved response is never shown
-    // =====================================================================================================
-
     private static MockHttpServletRequest variant(String method, String path, String query, String body, String key) {
         MockHttpServletRequest request = new MockHttpServletRequest(method, path);
         request.setContentType("application/json");
@@ -767,10 +728,6 @@ class IdempotencyInterceptorTests {
 
         assertProblem(response, ProblemType.KEY_REUSED);
     }
-
-    // =====================================================================================================
-    // F. Caller identity
-    // =====================================================================================================
 
     @Test
     void twoCallersSendingTheSameKeyAndRequestBothRun() throws Exception {
@@ -835,10 +792,6 @@ class IdempotencyInterceptorTests {
         assertTrue(run(validPost("k1"), new MockHttpServletResponse(), create()));
     }
 
-    // =====================================================================================================
-    // G. Oversized body flagged by the filter
-    // =====================================================================================================
-
     @Test
     void anOversizedBodyOnAnIdempotentEndpointIsRefusedWith413() throws Exception {
         MockHttpServletRequest request = validPost("k1");
@@ -858,10 +811,6 @@ class IdempotencyInterceptorTests {
 
         assertTrue(run(request, new MockHttpServletResponse(), create()));
     }
-
-    // =====================================================================================================
-    // H. The store fails: fail closed
-    // =====================================================================================================
 
     @Test
     void whenClaimingFailsTheAnswerIs503AndTheControllerDoesNotRun() throws Exception {
@@ -919,13 +868,9 @@ class IdempotencyInterceptorTests {
         assertEquals(0, store.writes.get());
     }
 
-    // =====================================================================================================
-    // I. Races
-    // =====================================================================================================
-
     @Test
     void aLostClaimWhoseRecordHasVanishedIsRetriedOnceAndThenRuns() throws Exception {
-        store.claimsToLose.set(1);   // first claim "loses", but no record is there when we look
+        store.claimsToLose.set(1);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertTrue(run(validPost("k1"), response, create()));
@@ -1024,10 +969,6 @@ class IdempotencyInterceptorTests {
             assertEquals("{\"id\":7}", response.getContentAsString());
         }
     }
-
-    // =====================================================================================================
-    // M. Hand-over to the response capture: the claim attribute and startCapturing()
-    // =====================================================================================================
 
     private static IdempotencyRecord claimAttribute(MockHttpServletRequest request) {
         return (IdempotencyRecord) request.getAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE);

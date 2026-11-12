@@ -51,7 +51,6 @@ public class RedisIdempotencyStore implements IdempotencyStore {
     @Override
     public Optional<Duration> getRemainingTtl(String key) {
         Long seconds = redisTemplate.getExpire(key);
-        // Redis reports -2 for a missing key and -1 for a key with no expiry; null can occur in pipelines.
         if (seconds == null || seconds < 0) return Optional.empty();
         return Optional.of(Duration.ofSeconds(seconds));
     }

@@ -7,8 +7,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target({ElementType.METHOD, ElementType.TYPE})  // allowed on methods and classes
-@Retention(RetentionPolicy.RUNTIME)              // still present when the app runs
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
 public @interface Idempotent {
     String header() default IdempotencyDefaults.IDEMPOTENCY_KEY_HEADER;
     String ttl() default IdempotencyDefaults.DEFAULT_TTL;

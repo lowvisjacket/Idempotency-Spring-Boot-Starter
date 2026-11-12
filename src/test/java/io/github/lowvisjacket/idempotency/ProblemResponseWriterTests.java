@@ -46,8 +46,6 @@ class ProblemResponseWriterTests {
         return mapper.readValue(response.getContentAsByteArray(), Map.class);
     }
 
-    // --- The problem types themselves ---
-
     @ParameterizedTest(name = "{0} has status {1}")
     @CsvSource({
             "INVALID_KEY,          400",
@@ -80,8 +78,6 @@ class ProblemResponseWriterTests {
         }
     }
 
-    // --- Status, content type, encoding ---
-
     @ParameterizedTest
     @EnumSource(ProblemType.class)
     void theHttpStatusMatchesTheProblemType(ProblemType problem) throws Exception {
@@ -110,8 +106,6 @@ class ProblemResponseWriterTests {
 
         assertEquals("UTF-8", response.getCharacterEncoding());
     }
-
-    // --- Body shape ---
 
     @ParameterizedTest
     @EnumSource(ProblemType.class)
@@ -165,8 +159,6 @@ class ProblemResponseWriterTests {
         assertNull(response.getHeader("Retry-After"));
     }
 
-    // --- Output must be valid JSON whatever the detail contains ---
-
     @ParameterizedTest(name = "detail #{index} survives a JSON round trip")
     @ValueSource(strings = {
             "plain",
@@ -192,7 +184,6 @@ class ProblemResponseWriterTests {
         assertEquals(Set.of("type", "title", "status", "detail"), body.keySet(), "injected members must not appear");
         assertEquals(400, body.get("status"), "injected status must not win");
         String roundTripped = (String) body.get("detail");
-        // An unpaired surrogate cannot be encoded in UTF-8, so Jackson may replace it; everything else is exact.
         if (!detail.contains("\uD83D end")) {
             assertEquals(detail, roundTripped);
         } else {
@@ -243,8 +234,6 @@ class ProblemResponseWriterTests {
         assertEquals(1, text.chars().filter(c -> c == '{').count(), "no nested or repeated objects: " + text);
     }
 
-    // --- Retry-After ---
-
     @ParameterizedTest(name = "{0} gives Retry-After: {1}")
     @CsvSource({
             "PT1S,        1",
@@ -252,8 +241,8 @@ class ProblemResponseWriterTests {
             "PT1M,        60",
             "PT1H,        3600",
             "P1D,         86400",
-            "PT1.5S,      2",    // rounds UP, never down
-            "PT0.001S,    1",    // a single millisecond still waits one second
+            "PT1.5S,      2",
+            "PT0.001S,    1",
             "PT29.1S,     30",
             "PT59.999S,   60",
             "P3650D,      315360000"
@@ -295,8 +284,6 @@ class ProblemResponseWriterTests {
         assertEquals(200, response.getStatus());
         assertEquals(0, response.getContentAsByteArray().length);
     }
-
-    // --- The state of the response it is given ---
 
     @Test
     void headersAlreadyOnTheResponseAreKept() throws Exception {
@@ -362,8 +349,6 @@ class ProblemResponseWriterTests {
         assertEquals("5", response.getHeader("Retry-After"));
     }
 
-    // --- Bad arguments ---
-
     @Test
     void aNullResponseIsRejected() {
         assertThrows(NullPointerException.class, () -> writer.write(null, ProblemType.INVALID_KEY, "x"));
@@ -382,8 +367,6 @@ class ProblemResponseWriterTests {
     void aNullObjectMapperIsRejectedAtConstruction() {
         assertThrows(NullPointerException.class, () -> new ProblemResponseWriter(null));
     }
-
-    // --- Sharing one instance ---
 
     @Test
     void oneWriterCanServeManyThreadsAtOnce() throws Exception {

@@ -13,13 +13,6 @@ import java.io.IOException;
 import java.util.Set;
 
 /**
- * REVIEW (naming): "RequestFilter" is vague. Something like RequestBodyCachingFilter says what it does.
- *
- * REVIEW (missing): nothing registers this filter, so it will not run in a real app yet. It becomes a bean
- * with a deliberate order in the autoconfiguration step. Do NOT put @Component on it: a library should not
- * force beans on every app that scans its package.
- */
-/**
  * Buffers the body of write requests so it can be read more than once.
  *
  * <p>A servlet request body can only be read a single time. The fingerprint needs the body, and the controller
@@ -63,10 +56,6 @@ public class RequestFilter extends OncePerRequestFilter {
      */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        /**
-         * REVIEW (later): multipart uploads (Content-Type multipart/form-data) should also be skipped here, or
-         * Spring's own multipart parsing will find an empty body.
-         */
         if (!WRAPPED_ALLOWED_METHODS.contains(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;
@@ -79,10 +68,6 @@ public class RequestFilter extends OncePerRequestFilter {
         }
 
         RequestWrapper wrapper;
-        /**
-         * REVIEW (later): FingerprintException is a general exception. Introduce a dedicated BodyTooLargeException
-         * (thrown by RequestWrapper) so this catch handles exactly the too-large case and nothing else.
-         */
         try {
             wrapper = new RequestWrapper(request);
         } catch (FingerprintException exception) {

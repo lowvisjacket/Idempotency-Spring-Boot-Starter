@@ -48,7 +48,6 @@ class StoredKeysTests {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(normalized.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
-            // Every Java runtime must support SHA-256, so this cannot happen; unchecked keeps the tests tidy.
             throw new IllegalStateException("SHA-256 is required on every JVM", e);
         }
     }
@@ -57,16 +56,12 @@ class StoredKeysTests {
         return String.valueOf(c).repeat(times);
     }
 
-    // --- The constants ---
-
     @Test
     void thePrefixConstantsAreWhatTheseTestsAssume() throws Exception {
         assertEquals("idempotency:v1:", IdempotencyDefaults.KEY_PREFIX);
         assertEquals("user", IdempotencyDefaults.USER_SEGMENT);
         assertEquals("anonymous", IdempotencyDefaults.ANONYMOUS_SEGMENT);
     }
-
-    // --- Shape: identified caller ---
 
     @Test
     void anIdentifiedCallerGetsTheUserShape() throws Exception {
@@ -81,7 +76,6 @@ class StoredKeysTests {
             "anonymous,          2f183a4e64493af3f377f745eda502363cd3e7ef6e4d266d444758de0a85fcc8"
     })
     void theCallerPartIsTheKnownSha256OfTheName(String name, String expectedHash) throws Exception {
-        // Known answers computed outside Java, so a wrong hash algorithm or encoding cannot hide.
         assertEquals(USER_PREFIX + expectedHash + ":k", StoredKeys.build(name, "k"));
     }
 
@@ -91,8 +85,6 @@ class StoredKeysTests {
 
         assertTrue(result.matches("idempotency:v1:user:[0-9a-f]{64}:k"), result);
     }
-
-    // --- Shape: anonymous caller ---
 
     @Test
     void aNullCallerIsAnonymous() throws Exception {
@@ -118,14 +110,11 @@ class StoredKeysTests {
 
     @Test
     void aCallerWhoseNameHasSurroundingSpacesIsStillAnIdentifiedCaller() throws Exception {
-        // Only an entirely blank name is anonymous. Spaces around a real name are part of the name; do not trim.
         String result = StoredKeys.build(" alice ", "k");
 
         assertEquals(USER_PREFIX + sha256Hex(" alice ") + ":k", result);
         assertNotEquals(StoredKeys.build("alice", "k"), result);
     }
-
-    // --- The point of the whole class: separation ---
 
     @Test
     void sameKeyDifferentCallersGetDifferentStoreKeys() throws Exception {
@@ -157,8 +146,6 @@ class StoredKeysTests {
         assertEquals(StoredKeys.build("alice", "k"), StoredKeys.build("alice", "k"));
     }
 
-    // --- Boundary tricks: moving characters between the caller and the key must never collide ---
-
     @Test
     void movingAColonBetweenCallerAndKeyDoesNotCollide() throws Exception {
         assertNotEquals(StoredKeys.build("a:b", "c"), StoredKeys.build("a", "b:c"));
@@ -166,7 +153,6 @@ class StoredKeysTests {
 
     @Test
     void aKeyThatLooksLikeTheUserPrefixCannotImpersonateAnotherCaller() throws Exception {
-        // An anonymous caller sends a key shaped like "user:<alice's hash>:k". It must not equal alice's real key.
         String forged = StoredKeys.build(null, "user:" + sha256Hex("alice") + ":k");
         String real = StoredKeys.build("alice", "k");
 
@@ -175,7 +161,6 @@ class StoredKeysTests {
 
     @Test
     void aCallerNameThatIsAnotherCallersHashDoesNotCollide() throws Exception {
-        // Naming yourself after alice's hash must not land in alice's space (the name is hashed again).
         assertNotEquals(StoredKeys.build("alice", "k"), StoredKeys.build(sha256Hex("alice"), "k"));
     }
 
@@ -190,27 +175,24 @@ class StoredKeysTests {
         assertEquals(name.equals("alice") ? 2 : 3, seen.size());
     }
 
-    // --- Unicode and odd caller names ---
-
     @Test
     void composedAndDecomposedFormsOfTheSameNameGiveTheSameKey() throws Exception {
-        String composed = "José";      // é as one character
-        String decomposed = "José";   // e followed by a combining accent
+        String composed = "José";
+        String decomposed = "José";
 
         assertEquals(StoredKeys.build(composed, "k"), StoredKeys.build(decomposed, "k"));
     }
 
     @Test
     void differentNamesThatLookAlikeStayDifferent() throws Exception {
-        // Cyrillic "а" (U+0430) is not Latin "a": different people, different keys.
         assertNotEquals(StoredKeys.build("alice", "k"), StoredKeys.build("аlice", "k"));
     }
 
     @ParameterizedTest(name = "unusual caller #{index} is accepted and gives clean output")
     @ValueSource(strings = {
-            "ключ",       // Cyrillic
-            "鍵世界",             // CJK
-            "user 🔑",              // emoji
+            "ключ",
+            "鍵世界",
+            "user 🔑",
             "with space",
             "tab\there",
             "new\nline",
@@ -220,7 +202,7 @@ class StoredKeysTests {
             "zero​width",
             "line separator",
             "alice@example.com",
-            "CN=alice,OU=staff,O=Example"     // a certificate-style name
+            "CN=alice,OU=staff,O=Example"
     })
     void anyCallerNameIsAcceptedAndTheOutputStaysCleanAscii(String name) throws Exception {
         String result = StoredKeys.build(name, "order-1");
@@ -249,8 +231,6 @@ class StoredKeysTests {
     void aStringOfOnlyLoneSurrogatesDoesNotCrash() throws Exception {
         assertDoesNotThrow(() -> StoredKeys.build("😀\uD83D", "k"));
     }
-
-    // --- The idempotency key is validated, and used unchanged ---
 
     @ParameterizedTest(name = "key \"{0}\" is embedded unchanged")
     @ValueSource(strings = {"a", "order-1", "user:42:payment:7", "3f2b8c1e-6d4a-4b7e-9f10-2a5c7d9e1b34", "a.b~c=d", "!#$%&'()*+,/;<>?@[]^`{|}"})
@@ -302,8 +282,6 @@ class StoredKeysTests {
         assertFalse(thrown.getMessage().contains("alice"));
         assertFalse(thrown.getMessage().contains("\n"));
     }
-
-    // --- Scale and sharing ---
 
     @Test
     void manyDistinctCallersAndKeysNeverProduceTheSameStoreKey() throws Exception {

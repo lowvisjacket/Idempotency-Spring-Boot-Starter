@@ -58,10 +58,6 @@ class CapturingResponseTests {
         return bytes;
     }
 
-    // =====================================================================================================
-    // Construction
-    // =====================================================================================================
-
     @Test
     void aNullResponseIsRejected() {
         assertThrows(NullPointerException.class, () -> new CapturingResponse(null, 10));
@@ -77,10 +73,6 @@ class CapturingResponseTests {
     void aLimitOfZeroIsAllowed() {
         assertDoesNotThrow(() -> new CapturingResponse(real, 0));
     }
-
-    // =====================================================================================================
-    // Pass-through: the wrapper starts invisible
-    // =====================================================================================================
 
     @Test
     void beforeCapturingStartsBytesReachTheRealResponseAtOnce() throws Exception {
@@ -129,10 +121,6 @@ class CapturingResponseTests {
 
         assertArrayEquals(utf8("abc"), sent());
     }
-
-    // =====================================================================================================
-    // Capturing: the body is held back until release
-    // =====================================================================================================
 
     @Test
     void whileCapturingTheBodyIsHeldBackFromTheRealResponse() throws Exception {
@@ -259,10 +247,6 @@ class CapturingResponseTests {
         assertArrayEquals(utf8("hello"), response.getCapturedBody());
     }
 
-    // =====================================================================================================
-    // The limit
-    // =====================================================================================================
-
     @ParameterizedTest(name = "exactly {0} bytes still fits")
     @ValueSource(ints = {1, 10, 16})
     void aBodyExactlyAtTheLimitIsStillCaptured(int max) throws Exception {
@@ -349,10 +333,6 @@ class CapturingResponseTests {
         assertTrue(oneByte.isOverflowed());
     }
 
-    // =====================================================================================================
-    // The writer
-    // =====================================================================================================
-
     @Test
     void theWriterEncodesWithTheDeclaredCharset() throws Exception {
         CapturingResponse response = passThrough(64);
@@ -411,8 +391,8 @@ class CapturingResponseTests {
         response.startCapturing();
 
         Writer writer = response.getWriter();
-        writer.write("\uD83D");     // first half of the emoji
-        writer.write("\uDE00");     // second half
+        writer.write("\uD83D");
+        writer.write("\uDE00");
         writer.flush();
 
         assertArrayEquals(new byte[]{(byte) 0xF0, (byte) 0x9F, (byte) 0x98, (byte) 0x80}, response.getCapturedBody());
@@ -439,14 +419,10 @@ class CapturingResponseTests {
         response.setCharacterEncoding("UTF-8");
         response.startCapturing();
 
-        response.getWriter().write("abcdefgh");   // sits in the writer's buffer
+        response.getWriter().write("abcdefgh");
 
         assertTrue(response.isOverflowed(), "isOverflowed must flush the writer before answering");
     }
-
-    // =====================================================================================================
-    // Writer or stream, not both
-    // =====================================================================================================
 
     @ParameterizedTest(name = "capturing started: {0}")
     @ValueSource(booleans = {false, true})
@@ -477,10 +453,6 @@ class CapturingResponseTests {
                 : new CapturingResponse(new MockHttpServletResponse(), 16);
         assertSame(writers.getWriter(), writers.getWriter());
     }
-
-    // =====================================================================================================
-    // Reset
-    // =====================================================================================================
 
     @Test
     void resetBufferDiscardsTheHeldBody() throws Exception {
@@ -538,10 +510,6 @@ class CapturingResponseTests {
         assertArrayEquals(utf8("abcdefgh"), response.getCapturedBody());
     }
 
-    // =====================================================================================================
-    // Starting too late: never a partial body
-    // =====================================================================================================
-
     @Test
     void startingAfterTheStreamWasObtainedOverflowsAndTouchesNothing() throws Exception {
         CapturingResponse response = passThrough(16);
@@ -582,10 +550,6 @@ class CapturingResponseTests {
         assertTrue(response.isOverflowed());
         assertFalse(response.isCapturing());
     }
-
-    // =====================================================================================================
-    // Status and headers always go straight to the real response
-    // =====================================================================================================
 
     @ParameterizedTest(name = "capturing started: {0}")
     @ValueSource(booleans = {false, true})

@@ -50,13 +50,6 @@ import tools.jackson.databind.ObjectMapper;
  * @see IdempotencyStoreAutoConfiguration
  * @see IdempotencyProperties
  */
-// TODO(you): class-level annotations (all from Spring Boot):
-//  @AutoConfiguration(after = IdempotencyStoreAutoConfiguration.class)  -> "this is an auto-configuration" + order
-//  @ConditionalOnWebApplication(type = SERVLET)                         -> not for reactive / non-web apps
-//  @ConditionalOnProperty(prefix = IdempotencyProperties.PREFIX, name = "enabled", matchIfMissing = true)
-//                                                                       -> on unless explicitly turned off
-//  @ConditionalOnBean(IdempotencyStore.class)                           -> nothing to do without a store
-//  @EnableConfigurationProperties(IdempotencyProperties.class)          -> makes the properties class a bean
 @AutoConfiguration(after = IdempotencyStoreAutoConfiguration.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnProperty(prefix = IdempotencyProperties.PREFIX, name = "enabled", matchIfMissing = true)
@@ -67,7 +60,6 @@ public class IdempotencyAutoConfiguration {
     /**
      * @return the shared fingerprint calculator (it holds no state)
      */
-    // TODO(you): @Bean + @ConditionalOnMissingBean
     @Bean
     @ConditionalOnMissingBean
     public Fingerprint fingerprint() {
@@ -78,7 +70,6 @@ public class IdempotencyAutoConfiguration {
      * @param objectMapper the application's Jackson mapper (Boot provides one)
      * @return the writer for {@code application/problem+json} refusals
      */
-    // TODO(you): @Bean + @ConditionalOnMissingBean
     @Bean
     @ConditionalOnMissingBean
     public ProblemResponseWriter problemResponseWriter(ObjectMapper objectMapper) {
@@ -88,7 +79,6 @@ public class IdempotencyAutoConfiguration {
     /**
      * @return the interceptor that claims keys, refuses repeats and replays saved responses
      */
-    // TODO(you): @Bean + @ConditionalOnMissingBean. The three parameters are filled in by Spring from the beans above.
     @Bean
     @ConditionalOnMissingBean
     public IdempotencyInterceptor idempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint,
@@ -101,8 +91,6 @@ public class IdempotencyAutoConfiguration {
      *
      * @return a registration for all URLs, running at {@code IdempotencyDefaults.REQUEST_FILTER_ORDER}
      */
-    // TODO(you): @Bean. Why a FilterRegistrationBean and not just returning the filter? Because it is the only way
-    //  to set the ORDER (and URL patterns). Also it must not be @Component-scanned (see the REVIEW on RequestFilter).
     @Bean
     public FilterRegistrationBean<RequestFilter> requestFilterRegistration() {
         FilterRegistrationBean<RequestFilter> filterRegistrationBean = new FilterRegistrationBean<RequestFilter>(new RequestFilter());
@@ -115,7 +103,6 @@ public class IdempotencyAutoConfiguration {
      *
      * @return a registration for all URLs, running at {@code IdempotencyDefaults.RESPONSE_FILTER_ORDER}
      */
-    // TODO(you): @Bean
     @Bean
     public FilterRegistrationBean<ResponseCaptureFilter> responseCaptureFilterRegistration(
             IdempotencyStore store, IdempotencyProperties properties) {
@@ -130,8 +117,6 @@ public class IdempotencyAutoConfiguration {
      * @param interceptor the library's interceptor
      * @return a configurer whose {@code addInterceptors} registers it
      */
-    // TODO(you): @Bean. WebMvcConfigurer has only default methods, so a lambda will NOT work; return an anonymous
-    //  class (or a small nested class) that overrides addInterceptors(InterceptorRegistry registry).
     @Bean
     public WebMvcConfigurer idempotencyWebMvcConfigurer(IdempotencyInterceptor interceptor) {
         return new WebMvcConfigurer() {

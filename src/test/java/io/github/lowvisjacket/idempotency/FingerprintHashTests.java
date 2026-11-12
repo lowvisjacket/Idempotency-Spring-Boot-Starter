@@ -51,8 +51,6 @@ class FingerprintHashTests {
         return request("POST", "http://localhost/payments?currency=usd", "{\"amount\":50}");
     }
 
-    // --- Basic properties ---
-
     @Test
     void sameRequestGivesSameHash() throws Exception {
         assertEquals(hash(baseline()), hash(baseline()));
@@ -71,8 +69,6 @@ class FingerprintHashTests {
 
         assertEquals(first, hash(baseline()));
     }
-
-    // --- Anything that makes it a different request must change the hash ---
 
     @Test
     void differentMethodGivesDifferentHash() throws Exception {
@@ -109,8 +105,6 @@ class FingerprintHashTests {
         assertNotEquals(hash(baseline()), hash(none));
     }
 
-    // --- Things that must NOT change the hash (a retry looks like this) ---
-
     @Test
     void idempotencyKeyHeaderDoesNotAffectHash() throws Exception {
         HttpServletRequest first = request("POST", "http://localhost/payments?currency=usd", "{\"amount\":50}",
@@ -123,7 +117,6 @@ class FingerprintHashTests {
 
     @Test
     void perAttemptHeadersDoNotAffectHash() throws Exception {
-        // A retry normally carries a fresh request id; it is still the same request.
         HttpServletRequest first = request("POST", "http://localhost/payments?currency=usd", "{\"amount\":50}",
                 "X-Request-Id", "attempt-1");
         HttpServletRequest retry = request("POST", "http://localhost/payments?currency=usd", "{\"amount\":50}",
@@ -134,15 +127,13 @@ class FingerprintHashTests {
 
     @Test
     void unicodeFormsOfTheSameTextGiveTheSameHash() throws Exception {
-        String composed = "{\"name\":\"café\"}";      // é as one character
-        String decomposed = "{\"name\":\"café\"}";   // e followed by a combining accent
+        String composed = "{\"name\":\"café\"}";
+        String decomposed = "{\"name\":\"café\"}";
 
         assertEquals(
                 hash(request("POST", "http://localhost/people", composed)),
                 hash(request("POST", "http://localhost/people", decomposed)));
     }
-
-    // --- Ambiguity: different requests must not collapse into the same input ---
 
     @Test
     void noQueryIsNotTheSameAsAQueryThatSpellsNull() throws Exception {
@@ -154,7 +145,6 @@ class FingerprintHashTests {
 
     @Test
     void partsAreNotJustGluedTogether() throws Exception {
-        // Same characters overall, split differently between path and query/body.
         HttpServletRequest a = request("POST", "http://localhost/ab?c=1", "x");
         HttpServletRequest b = request("POST", "http://localhost/a?bc=1", "x");
         HttpServletRequest c = request("POST", "http://localhost/a", "b?c=1x");
@@ -165,9 +155,6 @@ class FingerprintHashTests {
 
     @Test
     void delimiterInsideOnePartCannotForgeAnotherRequest() throws Exception {
-        // The parts are joined with "|". Moving a "|" across the body/query boundary
-        // must not produce the same hash.
-        // (Built directly: java.net.URI rejects a raw "|" in a query, though a lenient server may pass one through.)
         MockHttpServletRequest a = new MockHttpServletRequest("POST", "/p");
         a.setQueryString("c");
         a.setContent("a|b".getBytes(StandardCharsets.UTF_8));
@@ -191,8 +178,6 @@ class FingerprintHashTests {
 
     @Test
     void bodyIsStillReadableAfterHashing() throws Exception {
-        // The controller must still be able to read the body after the fingerprint was computed.
-        // In real use the filter wraps once and passes the same wrapper to everything downstream.
         RequestWrapper wrapper = new RequestWrapper(request("POST", "http://localhost/p", "{\"amount\":50}"));
 
         fingerprint.hash(wrapper);
@@ -205,7 +190,6 @@ class FingerprintHashTests {
 
     @Test
     void differentBinaryBodiesDoNotCollide() throws Exception {
-        // Neither body is valid UTF-8; decoding them naively would turn both into replacement characters.
         MockHttpServletRequest a = new MockHttpServletRequest("POST", "/upload");
         a.setContent(new byte[]{(byte) 0xff, (byte) 0xfe, 0x01});
         MockHttpServletRequest b = new MockHttpServletRequest("POST", "/upload");
@@ -222,8 +206,6 @@ class FingerprintHashTests {
 
         assertEquals("café", new RequestWrapper(request).getReader().readLine());
     }
-
-    // --- Size and concurrency ---
 
     @Test
     void bodyExactlyAtTheLimitIsAccepted() throws Exception {

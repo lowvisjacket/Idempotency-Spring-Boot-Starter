@@ -64,7 +64,6 @@ public class CapturingResponse extends HttpServletResponseWrapper {
      * @throws IllegalArgumentException if {@code maxBytes} is negative
      */
     public CapturingResponse(HttpServletResponse response, int maxBytes) {
-        // requireNonNull inside super(...) so a null gives NullPointerException, not the parent's IllegalArgumentException
         super(Objects.requireNonNull(response, "response"));
         if (maxBytes < 0) {
             throw new IllegalArgumentException("maxBytes must not be negative");
@@ -205,7 +204,6 @@ public class CapturingResponse extends HttpServletResponseWrapper {
                     buffer.write(b, off, len);
                     return;
                 }
-                // too big to save: send what we hold first (keeps order), then carry on straight through
                 mode = Mode.OVERFLOWED;
                 buffer.writeTo(getResponse().getOutputStream());
                 buffer.reset();

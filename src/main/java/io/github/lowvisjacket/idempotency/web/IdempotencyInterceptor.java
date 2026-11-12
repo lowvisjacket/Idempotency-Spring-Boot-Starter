@@ -135,7 +135,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             return refuseBodyTooLarge(response);
         }
 
-        // Parsed before the store is used, so a bad annotation can never leave a record behind.
         Duration ttl = TtlParser.parse(idempotent.ttl());
 
         Principal principal = request.getUserPrincipal();
@@ -149,19 +148,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             return refuseBodyTooLarge(response);
         }
 
-        /**
-         * HINT (new): winning a claim now has two extra duties, in BOTH places where the claim can be won (the
-         * first try, and the retry inside `found.isEmpty()`). Put them in one small private method and call it
-         * from both, so they cannot drift apart:
-         *   1. request.setAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE, claimRecord);
-         *      (the response filter reads this to know which record to complete or delete)
-         *   2. find the CapturingResponse and call startCapturing() on it. Do not test `response instanceof
-         *      CapturingResponse`: another filter (compression, logging) may have wrapped our wrapper, and then
-         *      the check fails. WebUtils.getNativeResponse(response, CapturingResponse.class) looks through the
-         *      wrappers; it returns null when the filter is not installed, in which case simply skip this step.
-         * Refusals and replays do neither of these. They own no record.
-         */
-        // Only the store calls are inside the try, so a bug elsewhere is not reported as "store unavailable".
         IdempotencyRecord claimRecord = new IdempotencyRecord(storedKey, hash, null, null, 0, ttl);
         IdempotencyRecord existing;
         try {
@@ -172,7 +158,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
 
             Optional<IdempotencyRecord> found = store.find(storedKey);
             if (found.isEmpty()) {
-                // It expired or was deleted between the two calls: try once more, never loop.
                 if (store.claim(claimRecord)) {
                     handOver(request, response, claimRecord);
                     return true;
@@ -181,7 +166,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             }
             existing = found.get();
         } catch (RuntimeException e) {
-            // The message is deliberately not sent: it can contain host names, ports or credentials.
             writer.write(response, ProblemType.STORE_UNAVAILABLE, "The idempotency store is unavailable",
                     IdempotencyDefaults.STORE_RETRY_AFTER);
             return false;
@@ -234,7 +218,6 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         response.setStatus(saved.getHttpStatus());
         response.setHeader(IdempotencyDefaults.REPLAY_HEADER, "true");
         if (saved.getContentType() != null) {
-            // exactly what the client first received, charset included, so the same bytes mean the same text
             response.setContentType(saved.getContentType());
         }
         if (saved.getBody() != null) {

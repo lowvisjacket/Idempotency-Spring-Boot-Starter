@@ -80,7 +80,6 @@ class RequestFilterTests {
 
     @Test
     void anOversizedBodyWithNoDeclaredLengthGetsA413AndTheChainIsNotCalled() throws Exception {
-        // A chunked upload has no Content-Length, so the filter only finds out the body is too big while reading it.
         MockHttpServletRequest chunked = new MockHttpServletRequest("POST", "/payments") {
             @Override
             public long getContentLengthLong() {

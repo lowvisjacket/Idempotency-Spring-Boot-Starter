@@ -30,19 +30,6 @@ public class RequestWrapper extends HttpServletRequestWrapper {
     private final byte[] savedBody;
 
     /**
-     * REVIEW (important): readAllBytes() reads the WHOLE body into memory and only then checks the size.
-     * A 1 GB upload is fully read before it is rejected, which defeats the cap. Read at most
-     * MAX_BODY_SIZE_BYTES + 1 bytes (see InputStream.readNBytes); if you got the extra byte, it is too big.
-     * This matters most for chunked uploads, where the filter cannot see a Content-Length up front.
-     * Also check request.getContentLengthLong() first and reject early when it is already over the cap.
-     *
-     * REVIEW (naming): a dedicated exception (for example BodyTooLargeException) would let the filter catch
-     * exactly this case and nothing else. FingerprintException is too general for that.
-     *
-     * REVIEW (docs): FingerprintException is unchecked, so listing it in "throws" does nothing; describe it in
-     * the Javadoc below instead. That Javadoc also promises IllegalArgumentException, which nothing throws here.
-     */
-    /**
      * @param request The request to wrap
      * @throws IllegalArgumentException if the request is null
      */
@@ -75,7 +62,6 @@ public class RequestWrapper extends HttpServletRequestWrapper {
 
             @Override
             public void setReadListener(ReadListener listener) {
-                // Not asynchronous: the whole body is already in memory.
             }
 
             @Override

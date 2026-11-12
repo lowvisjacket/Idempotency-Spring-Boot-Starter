@@ -73,8 +73,6 @@ class IdempotencyEndToEndTests {
         return mvc.perform(request).andReturn();
     }
 
-    // ---- the happy path and replay
-
     @Test
     void firstRequestRunsTheControllerAndGetsItsAnswer() throws Exception {
         MvcResult result = send(order(newKey(), JSON));
@@ -116,7 +114,6 @@ class IdempotencyEndToEndTests {
 
     @Test
     void anImmediateRetryNeverSeesAnInProgressAnswer() throws Exception {
-        // The record must be COMPLETED before the client can see the response.
         for (int i = 0; i < 25; i++) {
             String key = newKey();
             send(order(key, JSON));
@@ -185,8 +182,6 @@ class IdempotencyEndToEndTests {
         assertEquals(1, api.empties.get());
     }
 
-    // ---- what is saved
-
     @Test
     void theSavedRecordIsCompletedWithTheStatusBodyAndTheAnnotationsTtl() throws Exception {
         String key = newKey();
@@ -202,8 +197,6 @@ class IdempotencyEndToEndTests {
         assertTrue(left.compareTo(Duration.ofMinutes(9)) > 0 && left.compareTo(Duration.ofMinutes(10)) <= 0,
                 "@Idempotent(ttl = \"10m\") should apply, but was " + left);
     }
-
-    // ---- refusals
 
     @Test
     void sameKeyWithADifferentBodyIsRefused() throws Exception {
@@ -261,8 +254,6 @@ class IdempotencyEndToEndTests {
         assertNull(third.getResponse().getHeader("Idempotency-Replayed"));
     }
 
-    // ---- failures are retryable
-
     @Test
     void aControllerThatThrowsGivesTheKeyBack() {
         String key = newKey();
@@ -292,8 +283,6 @@ class IdempotencyEndToEndTests {
         assertEquals(1, api.rejected.get());
     }
 
-    // ---- big responses
-
     @Test
     void aResponseOverTheLimitIsSentInFullButNotSaved() throws Exception {
         String key = newKey();
@@ -305,8 +294,6 @@ class IdempotencyEndToEndTests {
         assertNull(second.getResponse().getHeader("Idempotency-Replayed"));
         assertEquals(2, api.big.get(), "it was not saved, so the retry runs again");
     }
-
-    // ---- who is asking
 
     @Test
     void differentCallersCanUseTheSameKeyWithoutSharingAnswers() throws Exception {
@@ -330,8 +317,6 @@ class IdempotencyEndToEndTests {
         assertNull(loggedIn.getResponse().getHeader("Idempotency-Replayed"));
         assertEquals(2, api.orders.get());
     }
-
-    // ---- two at once
 
     @Test
     void aSecondRequestWhileTheFirstIsStillRunningGets409WithRetryAfter() throws Exception {
@@ -358,8 +343,6 @@ class IdempotencyEndToEndTests {
         assertEquals("true", third.getResponse().getHeader("Idempotency-Replayed"));
         assertEquals(1, api.slow.get());
     }
-
-    // ---------------------------------------------------------------------------------------------------------
 
     /** A tiny application to call. Added to the test application with @Import. */
     @RestController

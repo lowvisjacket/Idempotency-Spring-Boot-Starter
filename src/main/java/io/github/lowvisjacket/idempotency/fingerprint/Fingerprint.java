@@ -23,8 +23,6 @@ public class Fingerprint {
     public String hash(RequestWrapper request) {
         MessageDigest digest = newDigest();
 
-        // Each part is written as [4-byte length][bytes], so a "|" (or any byte) inside one part
-        // can never be mistaken for the boundary between two parts.
         addPart(digest, text(request.getMethod()));
         addPart(digest, text(request.getRequestURI()));
         addPart(digest, text(request.getQueryString() == null ? "" : request.getQueryString()));

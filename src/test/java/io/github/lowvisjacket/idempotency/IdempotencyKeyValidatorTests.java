@@ -25,21 +25,19 @@ class IdempotencyKeyValidatorTests {
         return String.valueOf(c).repeat(times);
     }
 
-    // --- Valid keys ---
-
     @ParameterizedTest(name = "\"{0}\" is a valid key")
     @ValueSource(strings = {
             "a",
             "key-1",
-            "3f2b8c1e-6d4a-4b7e-9f10-2a5c7d9e1b34",   // UUID
+            "3f2b8c1e-6d4a-4b7e-9f10-2a5c7d9e1b34",
             "order_12345",
             "user:42:payment:7",
             "a.b.c",
             "abc~def",
-            "Zm9vYmFy==",                              // base64 padding
+            "Zm9vYmFy==",
             "KEY=value",
             "UPPER-and-lower",
-            "!#$%&'()*+,/;<>?@[]^`{|}"                 // every other printable symbol must be allowed
+            "!#$%&'()*+,/;<>?@[]^`{|}"
     })
     void acceptableKeysAreReturnedUnchanged(String key) {
         assertEquals(key, IdempotencyKeyValidator.validate(key));
@@ -52,8 +50,6 @@ class IdempotencyKeyValidatorTests {
         assertEquals(key, IdempotencyKeyValidator.validate(key));
     }
 
-    // --- Missing or blank ---
-
     @ParameterizedTest(name = "[{index}] null / empty is rejected")
     @NullAndEmptySource
     void nullAndEmptyAreRejected(String key) {
@@ -65,8 +61,6 @@ class IdempotencyKeyValidatorTests {
     void blankKeysAreRejected(String key) {
         assertThrows(InvalidIdempotencyKeyException.class, () -> IdempotencyKeyValidator.validate(key));
     }
-
-    // --- Too long ---
 
     @Test
     void aKeyOneCharacterOverTheMaximumIsRejected() {
@@ -83,8 +77,6 @@ class IdempotencyKeyValidatorTests {
                 assertThrows(InvalidIdempotencyKeyException.class, () -> IdempotencyKeyValidator.validate(key)));
     }
 
-    // --- Forbidden characters ---
-
     @ParameterizedTest(name = "key #{index} with a forbidden character is rejected")
     @ValueSource(strings = {
             "has space",
@@ -95,16 +87,16 @@ class IdempotencyKeyValidatorTests {
             "carriage\rreturn",
             "nul\0byte",
             "bell\u0007",
-            "escape\u001b[31m",         // terminal escape: log injection
+            "escape\u001b[31m",
             "delete\u007f",
-            "del\u0080c1control",       // C1 control character
-            "café",                // non-ASCII letter
-            "ключ", // Cyrillic
-            "鍵",                   // CJK
-            "key-🔑",         // emoji (surrogate pair)
-            "zero​width",          // zero-width space
+            "del\u0080c1control",
+            "café",
+            "ключ",
+            "鍵",
+            "key-🔑",
+            "zero​width",
             "line separator",
-            "nbsp here"            // non-breaking space is NOT a normal space but must still be rejected
+            "nbsp here"
     })
     void keysWithForbiddenCharactersAreRejected(String key) {
         assertThrows(InvalidIdempotencyKeyException.class, () -> IdempotencyKeyValidator.validate(key));
@@ -117,19 +109,15 @@ class IdempotencyKeyValidatorTests {
         assertThrows(InvalidIdempotencyKeyException.class, () -> IdempotencyKeyValidator.validate(key));
     }
 
-    // --- Injection-style values (they are just text to the validator, but must not slip through) ---
-
     @ParameterizedTest(name = "injection-style key #{index} is rejected")
     @ValueSource(strings = {
-            "key\r\nSet-Cookie: x=1",   // HTTP header injection
-            "key\nFLUSHALL",            // Redis protocol style
+            "key\r\nSet-Cookie: x=1",
+            "key\nFLUSHALL",
             "key with spaces and SET foo bar"
     })
     void injectionStyleKeysAreRejected(String key) {
         assertThrows(InvalidIdempotencyKeyException.class, () -> IdempotencyKeyValidator.validate(key));
     }
-
-    // --- The exception itself ---
 
     @Test
     void theExceptionHasAHelpfulMessage() {
@@ -142,7 +130,6 @@ class IdempotencyKeyValidatorTests {
 
     @Test
     void theMessageDoesNotEchoAnUnsafeKeyBack() {
-        // The message ends up in a response and in logs; a newline or escape sequence in it would be log injection.
         InvalidIdempotencyKeyException thrown = assertThrows(InvalidIdempotencyKeyException.class,
                 () -> IdempotencyKeyValidator.validate("evil\nforged log line"));
 
@@ -162,14 +149,12 @@ class IdempotencyKeyValidatorTests {
         assertEquals(IdempotencyKeyValidator.validate(key), IdempotencyKeyValidator.validate(key));
     }
 
-    // --- Added in review: error messages must never contain the rejected key ---
-
     @ParameterizedTest(name = "message for rejected key #{index} does not echo the key")
     @ValueSource(strings = {
-            "escape\u001b[31mred",   // terminal escape sequence
+            "escape\u001b[31mred",
             "nul\0byte",
-            "caf\u00e9",             // non-ASCII
-            "key-\uD83D\uDD11",      // emoji
+            "caf\u00e9",
+            "key-\uD83D\uDD11",
             "has space"
     })
     void rejectionMessagesNeverContainTheKey(String key) {

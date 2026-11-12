@@ -9,10 +9,7 @@ import java.time.Duration;
 public final class IdempotencyDefaults {
 
     private IdempotencyDefaults() {
-        // Constants only; never instantiated.
     }
-
-    // --- Sizes ---
 
     /** Largest request body (in bytes) the library will buffer for fingerprinting. */
     public static final int MAX_BODY_SIZE_BYTES = 2 * 1024;
@@ -25,8 +22,6 @@ public final class IdempotencyDefaults {
      * response is still sent to the client in full, but it cannot be saved.
      */
     public static final int MAX_RESPONSE_SIZE_BYTES = 64 * 1024;
-
-    // --- Names ---
 
     /** Default request header that carries the client's idempotency key. */
     public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
@@ -47,8 +42,6 @@ public final class IdempotencyDefaults {
     /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
     public static final String REPLAY_HEADER = "Idempotency-Replayed";
 
-    // --- Filter order ---
-
     /**
      * Order of the response-capturing filter. Lower runs first (outer). Spring Security's filter chain is at -100, so
      * this runs after it: a request Security already rejected never reaches the library.
@@ -58,8 +51,6 @@ public final class IdempotencyDefaults {
     /** Order of the request-body-caching filter; one step inside the response filter. */
     public static final int REQUEST_FILTER_ORDER = -49;
 
-    // --- Stored keys ---
-
     /** Start of every key this library writes to the store. The "v1" lets the key format change safely later. */
     public static final String KEY_PREFIX = "idempotency:v1:";
 
@@ -68,8 +59,6 @@ public final class IdempotencyDefaults {
 
     /** Segment that follows the prefix for requests with no identified caller (then the key). */
     public static final String ANONYMOUS_SEGMENT = "anonymous";
-
-    // --- Time ---
 
     /** {@code Retry-After} sent with a 409 (a request with this key is still running). */
     public static final Duration PENDING_RETRY_AFTER = Duration.ofSeconds(1);

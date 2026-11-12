@@ -20,17 +20,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @see IdempotencyAutoConfiguration
  */
-// TODO(you): add @ConfigurationProperties(prefix = IdempotencyProperties.PREFIX) here (the class name is needed: a class annotation cannot use the bare constant). It is what makes Boot bind the values AND what
-//  lets the annotation processor (already in the pom) write spring-configuration-metadata.json, which gives
-//  IDE auto-completion to the people who use the starter.
 @ConfigurationProperties(prefix = IdempotencyProperties.PREFIX)
 public class IdempotencyProperties {
 
     /** The property prefix: everything is {@code idempotency.*}. */
     public static final String PREFIX = "idempotency";
-
-    // TODO(you): give each field below a Javadoc sentence. The annotation processor copies it into the metadata
-    //  file as the description shown in the IDE (a test checks that every property has one).
 
     /** Boolean indicating if this library is enabled **/
     private boolean enabled = true;
@@ -58,9 +52,6 @@ public class IdempotencyProperties {
      * @throws IllegalArgumentException if negative
      */
     public void setMaxResponseBodyBytes(int maxResponseBodyBytes) {
-        // TODO(you): reject a negative value with IllegalArgumentException. Doing it in the setter means a bad
-        //  value in application.properties stops the app at startup with a clear message (instead of failing on
-        //  the first request). Zero is allowed.
         if (maxResponseBodyBytes < 0) throw new IllegalArgumentException("maxResponseBodyBytes must be equal or greater than 0: " + maxResponseBodyBytes);
         this.maxResponseBodyBytes = maxResponseBodyBytes;
     }

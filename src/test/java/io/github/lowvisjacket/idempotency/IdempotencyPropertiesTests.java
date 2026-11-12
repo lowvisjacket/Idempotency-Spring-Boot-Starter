@@ -29,8 +29,6 @@ class IdempotencyPropertiesTests {
                 .orElseGet(IdempotencyProperties::new);
     }
 
-    // ---- defaults
-
     @Test
     void prefixIsIdempotency() {
         assertEquals("idempotency", IdempotencyProperties.PREFIX);
@@ -50,8 +48,6 @@ class IdempotencyPropertiesTests {
         assertEquals(IdempotencyDefaults.MAX_RESPONSE_SIZE_BYTES, p.getMaxResponseBodyBytes());
     }
 
-    // ---- binding
-
     @Test
     void enabledCanBeSwitchedOff() {
         assertFalse(bind(Map.of("idempotency.enabled", "false")).isEnabled());
@@ -64,7 +60,6 @@ class IdempotencyPropertiesTests {
 
     @Test
     void camelCaseNameAlsoBinds() {
-        // Boot's "relaxed binding": max-response-body-bytes, maxResponseBodyBytes and MAX_RESPONSE_BODY_BYTES are the same
         assertEquals(77, bind(Map.of("idempotency.maxResponseBodyBytes", "77")).getMaxResponseBodyBytes());
     }
 
@@ -86,8 +81,6 @@ class IdempotencyPropertiesTests {
         IdempotencyProperties p = bind(Map.of("other.enabled", "false", "idempotency-x.enabled", "false"));
         assertTrue(p.isEnabled());
     }
-
-    // ---- bad values stop the app at startup
 
     @ParameterizedTest
     @ValueSource(strings = {"-1", "-65536", "-2147483648"})
@@ -118,8 +111,6 @@ class IdempotencyPropertiesTests {
         assertFalse(p.isEnabled());
         assertEquals(9, p.getMaxResponseBodyBytes());
     }
-
-    // ---- IDE help (spring-configuration-metadata.json)
 
     @Test
     void classIsMarkedAsConfigurationProperties() {

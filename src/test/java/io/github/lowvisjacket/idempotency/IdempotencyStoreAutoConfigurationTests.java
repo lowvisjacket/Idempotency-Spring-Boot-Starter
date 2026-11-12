@@ -56,7 +56,6 @@ class IdempotencyStoreAutoConfigurationTests {
 
     @Test
     void startsFineWhenRedisIsNotOnTheClasspath() {
-        // Redis is an optional dependency: an application without it must still start.
         runner.withClassLoader(new FilteredClassLoader(StringRedisTemplate.class)).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(IdempotencyStore.class);

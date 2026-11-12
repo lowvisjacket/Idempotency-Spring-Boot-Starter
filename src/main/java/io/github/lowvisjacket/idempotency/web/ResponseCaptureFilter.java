@@ -111,8 +111,6 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         try {
             chain.doFilter(request, wrapper);
         } catch (IOException | ServletException | RuntimeException | Error e) {
-            // The controller failed: give the key back, drop the held body (the container writes its own error
-            // page) and rethrow the same exception. A broken store must never replace it.
             IdempotencyRecord claim = claimOf(request);
             if (claim != null) {
                 deleteQuietly(claim);
@@ -129,7 +127,6 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         try {
             settle(claim, wrapper);
         } finally {
-            // after the store call, so the record is final before the client can see the response
             wrapper.release();
         }
     }
@@ -154,7 +151,7 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
                 IdempotencyRecord done = new IdempotencyRecord(
                         claim.getKey(), claim.getFingerprint(), contentType, body, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
-                store.complete(done); // false = the key expired meanwhile; nothing more to do
+                store.complete(done);
             } else {
                 store.delete(claim.getKey());
             }
@@ -203,7 +200,7 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
             Charset declared = MediaType.parseMediaType(contentType).getCharset();
             return declared == null || StandardCharsets.UTF_8.equals(declared);
         } catch (IllegalArgumentException e) {
-            return false; // not a media type we understand, or a charset the JVM does not know: cannot be sure
+            return false;
         }
     }
 
