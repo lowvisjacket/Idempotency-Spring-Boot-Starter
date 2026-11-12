@@ -20,6 +20,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -136,7 +137,10 @@ public class IdempotencyAutoConfiguration {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(interceptor).addPathPatterns("/**");
+                // Last of all, so the application's own interceptors (authentication, authorization, rate limiting, tenant
+                // checks) have run before a saved response can be served. Interceptors registered without an order
+                // run at order 0 and so come first.
+                registry.addInterceptor(interceptor).addPathPatterns("/**").order(Ordered.LOWEST_PRECEDENCE);
             }
         };
     }
