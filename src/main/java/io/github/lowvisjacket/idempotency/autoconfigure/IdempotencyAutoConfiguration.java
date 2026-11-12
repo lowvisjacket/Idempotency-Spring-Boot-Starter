@@ -110,7 +110,9 @@ public class IdempotencyAutoConfiguration {
     @Bean
     public FilterRegistrationBean<ResponseCaptureFilter> responseCaptureFilterRegistration(
             IdempotencyStore store, IdempotencyProperties properties) {
-        FilterRegistrationBean<ResponseCaptureFilter> filterRegistrationBean = new FilterRegistrationBean<ResponseCaptureFilter>(new ResponseCaptureFilter(store, properties.getMaxResponseBodyBytes()));
+        FilterRegistrationBean<ResponseCaptureFilter> filterRegistrationBean = new FilterRegistrationBean<ResponseCaptureFilter>(new ResponseCaptureFilter(store, properties.getMaxResponseBodyBytes(),
+                properties.getOnUnreplayableResponse() == IdempotencyProperties.UnreplayableResponsePolicy.BLOCK,
+                properties.getOnServerError() == IdempotencyProperties.ServerErrorPolicy.REPLAY));
         filterRegistrationBean.setOrder(IdempotencyDefaults.RESPONSE_FILTER_ORDER);
         return filterRegistrationBean;
     }

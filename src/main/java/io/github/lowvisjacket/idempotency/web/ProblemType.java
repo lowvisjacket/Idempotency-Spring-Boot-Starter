@@ -23,6 +23,9 @@ public enum ProblemType {
     /** The key was already used for a different request. */
     KEY_REUSED(422, "urn:idempotency:key-reused", "Idempotency key reused with a different request"),
 
+    /** The request finished, but its response was too large or not text, so it cannot be repeated; it is not run again. */
+    RESPONSE_NOT_REPLAYABLE(409, "urn:idempotency:response-not-replayable", "Original response cannot be replayed"),
+
     /** The store that tracks keys cannot be reached, so the request is refused rather than run unprotected. */
     STORE_UNAVAILABLE(503, "urn:idempotency:store-unavailable", "Idempotency store unavailable");
 

@@ -181,6 +181,12 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             writer.write(response, ProblemType.KEY_REUSED, "This key was already used for a different request");
             return false;
         }
+        if (!existing.isReplayable()) {
+            writer.write(response, ProblemType.RESPONSE_NOT_REPLAYABLE,
+                    "The original request finished with status " + existing.getHttpStatus()
+                            + " but its response is too large or not text, so it cannot be repeated");
+            return false;
+        }
         replay(response, existing);
         return false;
     }

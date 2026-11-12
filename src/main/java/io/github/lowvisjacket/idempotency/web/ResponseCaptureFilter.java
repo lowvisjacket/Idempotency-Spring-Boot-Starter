@@ -75,6 +75,10 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
 
     private final IdempotencyStore store;
     private final int maxResponseBytes;
+    /** True: a finished response that cannot be saved leaves a "finished, not replayable" record instead of none. */
+    private final boolean blockUnreplayable;
+    /** True: a 5xx response is saved and replayed like any other. */
+    private final boolean replayServerErrors;
 
     /**
      * Uses {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#MAX_RESPONSE_SIZE_BYTES}.
@@ -93,6 +97,20 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
      * @throws IllegalArgumentException if {@code maxResponseBytes} is negative
      */
     public ResponseCaptureFilter(IdempotencyStore store, int maxResponseBytes) {
+        this(store, maxResponseBytes, false, false);
+    }
+
+    /**
+     * @param blockUnreplayable  keep a non-replayable record when the response is too large or not text, so a retry
+     *                           is refused instead of running the handler again
+     * @param replayServerErrors save and replay 5xx responses instead of releasing the key
+     * @throws NullPointerException     if {@code store} is null
+     * @throws IllegalArgumentException if {@code maxResponseBytes} is negative
+     */
+    public ResponseCaptureFilter(IdempotencyStore store, int maxResponseBytes, boolean blockUnreplayable,
+                                 boolean replayServerErrors) {
+        this.blockUnreplayable = blockUnreplayable;
+        this.replayServerErrors = replayServerErrors;
         this.store = Objects.requireNonNull(store, "store");
         if (maxResponseBytes < 0) {
             throw new IllegalArgumentException("maxResponseBytes must not be negative");
@@ -147,25 +165,27 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
     /** Completes the claim when the response can be replayed, deletes it otherwise. Never throws for store errors. */
     private void settle(IdempotencyRecord claim, CapturingResponse wrapper) {
         int status = wrapper.getStatus();
-        boolean saveable = status < 500 && !IdempotencyDefaults.NEVER_SAVED_STATUSES.contains(status)
-                && !wrapper.isOverflowed() && wrapper.isCapturing();
+        boolean released = IdempotencyDefaults.NEVER_SAVED_STATUSES.contains(status)
+                || (status >= 500 && !replayServerErrors);
 
         String contentType = wrapper.getContentType();
         String body = null;
-        if (saveable) {
+        boolean replayable = !released && !wrapper.isOverflowed() && wrapper.isCapturing();
+        if (replayable) {
             byte[] bytes = wrapper.getCapturedBody();
             if (bytes.length > 0) {
                 body = decodeUtf8(bytes);
-                saveable = body != null && replayableAs(contentType, bytes);
+                replayable = body != null && replayableAs(contentType, bytes);
             }
         }
 
         try {
-            if (saveable) {
-                IdempotencyRecord done = new IdempotencyRecord(
-                        claim.getKey(), claim.getFingerprint(), contentType, savedHeaders(wrapper), body, status, claim.getTtl());
+            if (!released && (replayable || blockUnreplayable)) {
+                IdempotencyRecord done = new IdempotencyRecord(claim.getKey(), claim.getFingerprint(), contentType,
+                        savedHeaders(wrapper), replayable ? body : null, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
                 done.setOwner(claim.getOwner());
+                done.setReplayable(replayable);
                 store.complete(done);
             } else {
                 release(claim);

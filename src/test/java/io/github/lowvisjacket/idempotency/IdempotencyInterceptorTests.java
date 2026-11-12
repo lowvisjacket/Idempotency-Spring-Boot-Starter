@@ -116,6 +116,8 @@ class IdempotencyInterceptorTests {
             IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getContentType(),
                     r.getHeaders(), r.getBody(), r.getHttpStatus(), r.getTtl());
             c.setStatus(r.getStatus());
+            c.setOwner(r.getOwner());
+            c.setReplayable(r.isReplayable());
             return c;
         }
 

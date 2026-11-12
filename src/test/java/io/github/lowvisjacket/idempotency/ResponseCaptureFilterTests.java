@@ -195,6 +195,41 @@ class ResponseCaptureFilterTests {
     }
 
     @Test
+    void withTheBlockPolicyAnOversizedResponseLeavesAFinishedRecordInsteadOfNone() throws Exception {
+        ResponseCaptureFilter blocking = new ResponseCaptureFilter(store, 10, true, false);
+        seed();
+        MockHttpServletResponse real = new MockHttpServletResponse();
+
+        blocking.doFilter(new MockHttpServletRequest("POST", "/orders"), real, (request, response) -> {
+            interceptorWins(request, response, claim);
+            ((HttpServletResponse) response).setStatus(201);
+            response.getOutputStream().write(utf8("this body is longer than ten bytes"));
+        });
+
+        assertEquals("this body is longer than ten bytes", real.getContentAsString());
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertFalse(stored().isReplayable());
+        assertEquals(201, stored().getHttpStatus());
+        assertNull(stored().getBody());
+    }
+
+    @Test
+    void withTheReplayPolicyAServerErrorIsSavedLikeAnyOtherResponse() throws Exception {
+        ResponseCaptureFilter replaying = new ResponseCaptureFilter(store, 1000, false, true);
+        seed();
+
+        replaying.doFilter(new MockHttpServletRequest("POST", "/orders"), new MockHttpServletResponse(), (request, response) -> {
+            interceptorWins(request, response, claim);
+            ((HttpServletResponse) response).setStatus(503);
+            response.getOutputStream().write(utf8("down"));
+        });
+
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertEquals(503, stored().getHttpStatus());
+        assertEquals("down", stored().getBody());
+    }
+
+    @Test
     void anEmptyBodyIsSavedAsNull() throws Exception {
         MockHttpServletResponse real = serve(204, null);
 
