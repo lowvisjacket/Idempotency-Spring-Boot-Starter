@@ -12,6 +12,7 @@ import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
 import io.github.lowvisjacket.idempotency.model.Status;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.lowvisjacket.idempotency.store.StoredKeys;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -117,6 +118,9 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (!(handler instanceof HandlerMethod method)) return true;
+        // The same request is dispatched again for an async result and for an error page. The first dispatch already
+        // decided; deciding again would find the request's own PENDING record and answer 409 to the client.
+        if (request.getDispatcherType() != DispatcherType.REQUEST) return true;
 
         Idempotent idempotent = findIdempotent(method);
         if (idempotent == null) return true;

@@ -36,9 +36,10 @@ import java.util.*;
  *   <li><b>No claim.</b> If the request has no {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#CLAIM_ATTRIBUTE}
  *       (or the attribute is not an {@code IdempotencyRecord}), this request claimed nothing: release the response
  *       and make no store calls at all.</li>
- *   <li><b>Async.</b> If {@code request.isAsyncStarted()}, the real answer comes later, so do nothing now: release
- *       the response and leave the record alone. (Async controllers are not supported yet; the record stays
- *       {@code PENDING} until its TTL ends.)</li>
+ *   <li><b>Async.</b> If {@code request.isAsyncStarted()}, the real answer comes later and cannot be saved by this
+ *       filter. The startup check refuses async return types, so this is a handler it could not recognise; the
+ *       record is deleted (a warning is logged) instead of staying {@code PENDING} and locking the key out for the
+ *       whole TTL.</li>
  *   <li><b>Decide.</b> The record is <b>deleted</b> so the client can retry when the response should not be
  *       replayed, and <b>completed</b> otherwise:
  *     <ul>
@@ -119,7 +120,17 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         }
 
         IdempotencyRecord claim = claimOf(request);
-        if (claim == null || request.isAsyncStarted()) {
+        if (claim != null && request.isAsyncStarted()) {
+            // A handler the startup check could not recognise (it is declared to return Object, or starts async by
+            // itself) completes later, outside this filter, so the response can never be saved. Leaving the record
+            // PENDING would lock the key out for the whole TTL; release it instead and say so.
+            log.warn("An @Idempotent handler started asynchronous processing, which is not supported; the idempotency "
+                    + "key is released and this endpoint is not protected against retries");
+            deleteQuietly(claim);
+            wrapper.release();
+            return;
+        }
+        if (claim == null) {
             wrapper.release();
             return;
         }

@@ -615,7 +615,7 @@ class ResponseCaptureFilterTests {
     }
 
     @Test
-    void whenAsyncProcessingStartedNothingIsDecidedYet() throws Exception {
+    void whenAsyncProcessingStartedTheClaimIsReleasedInsteadOfLockingTheKeyForTheWholeTtl() throws Exception {
         seed();
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/orders");
         MockHttpServletResponse real = new MockHttpServletResponse();
@@ -626,8 +626,7 @@ class ResponseCaptureFilterTests {
             response.getOutputStream().write(utf8("later"));
         });
 
-        assertEquals(0, store.totalCalls(), "the real answer is not known yet");
-        assertEquals(Status.PENDING, stored().getStatus());
+        assertNull(stored(), "a record nobody will ever settle must not stay PENDING");
         assertEquals("later", real.getContentAsString());
     }
 
