@@ -4,12 +4,15 @@ import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public class RedisIdempotencyStore implements IdempotencyStore {
@@ -37,9 +40,27 @@ public class RedisIdempotencyStore implements IdempotencyStore {
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Uses a private {@link ObjectMapper} that only this class touches. The application's mapper is deliberately not
+     * used for records: an application may enable default typing, register modules, rename or hide properties, or
+     * change how dates and unknown fields are handled, and any of that would either break the stored format or make
+     * deserialising text read from a shared store dangerous.
+     */
+    public RedisIdempotencyStore(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = Objects.requireNonNull(redisTemplate, "redisTemplate");
+        this.objectMapper = JsonMapper.builder()
+                // a record written by a newer version may have more fields; ignore them rather than fail every request
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .build();
+    }
+
+    /**
+     * @param objectMapper ignored; kept so existing code that passes the application's mapper still compiles
+     * @deprecated the store uses its own mapper, see {@link #RedisIdempotencyStore(StringRedisTemplate)}
+     */
+    @Deprecated(forRemoval = true)
     public RedisIdempotencyStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
-        this.redisTemplate = redisTemplate;
-        this.objectMapper = objectMapper;
+        this(redisTemplate);
     }
 
     @Override

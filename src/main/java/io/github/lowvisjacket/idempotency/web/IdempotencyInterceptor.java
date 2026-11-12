@@ -200,8 +200,28 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
                             + " but its response is too large or not text, so it cannot be repeated");
             return false;
         }
+        if (!safeToReplay(existing)) {
+            // The record does not look like anything this library wrote (the store is shared, or was tampered with).
+            // Nothing from it is sent to the client.
+            writer.write(response, ProblemType.STORE_UNAVAILABLE, "The idempotency store is unavailable",
+                    IdempotencyDefaults.STORE_RETRY_AFTER);
+            return false;
+        }
         replay(response, existing);
         return false;
+    }
+
+    /** A saved response is only sent if its status is a real final status and its content type is one clean line. */
+    private static boolean safeToReplay(IdempotencyRecord saved) {
+        if (saved.getHttpStatus() < 200 || saved.getHttpStatus() > 599) return false;
+        String contentType = saved.getContentType();
+        if (contentType != null) {
+            for (int i = 0; i < contentType.length(); i++) {
+                char c = contentType.charAt(i);
+                if (c < 0x20 && c != '\t' || c == 0x7f) return false;
+            }
+        }
+        return true;
     }
 
     /**
