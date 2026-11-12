@@ -121,7 +121,7 @@ class IdempotencyInterceptorTests {
         }
 
         private static IdempotencyRecord copy(IdempotencyRecord r) {
-            IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getHeader(), r.getBody(),
+            IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getContentType(), r.getBody(),
                     r.getHttpStatus(), r.getTtl());
             c.setStatus(r.getStatus());
             return c;
@@ -240,8 +240,13 @@ class IdempotencyInterceptorTests {
     /** Puts a finished record in the store, as if an earlier identical request had completed. */
     private void seedCompleted(String caller, String key, MockHttpServletRequest sameAs, int status, String body)
             throws IOException {
-        IdempotencyRecord record = new IdempotencyRecord(storedKey(caller, key), fingerprintOf(sameAs), null, body,
-                status, Duration.ofHours(1));
+        seedCompleted(caller, key, sameAs, status, null, body);
+    }
+
+    private void seedCompleted(String caller, String key, MockHttpServletRequest sameAs, int status,
+                               String contentType, String body) throws IOException {
+        IdempotencyRecord record = new IdempotencyRecord(storedKey(caller, key), fingerprintOf(sameAs), contentType,
+                body, status, Duration.ofHours(1));
         record.setStatus(Status.COMPLETED);
         assertTrue(store.claim(record));
         store.resetCounters();
@@ -626,6 +631,61 @@ class IdempotencyInterceptorTests {
         run(validPost("k1"), response, create());
 
         assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), response.getContentAsByteArray());
+    }
+
+    @ParameterizedTest(name = "replays Content-Type {0}")
+    @ValueSource(strings = {"application/json", "application/json;charset=UTF-8", "text/plain;charset=UTF-8",
+            "application/problem+json", "text/html; charset=utf-8", "application/vnd.api+json"})
+    void aReplayIsSentWithTheSavedContentType(String contentType) throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 201, contentType, "{\"id\":7}");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        run(validPost("k1"), response, create());
+
+        assertEquals(contentType, response.getContentType());
+        assertEquals("{\"id\":7}", response.getContentAsString());
+    }
+
+    @Test
+    void aReplayWithNonAsciiTextAndTheSavedCharsetIsByteForByteTheOriginal() throws Exception {
+        String text = "José ✓ 😀";
+        seedCompleted(null, "k1", validPost("k1"), 200, "text/plain;charset=UTF-8", text);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        run(validPost("k1"), response, create());
+
+        assertEquals("text/plain;charset=UTF-8", response.getContentType());
+        assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), response.getContentAsByteArray());
+    }
+
+    @Test
+    void aReplayWithNoSavedContentTypeSendsNoneOfItsOwn() throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 204, null, null);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        run(validPost("k1"), response, create());
+
+        assertNull(response.getContentType());
+    }
+
+    @Test
+    void aReplayWithAnEmptyBodyStillSendsTheSavedContentType() throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 200, "application/json", null);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        run(validPost("k1"), response, create());
+
+        assertEquals("application/json", response.getContentType());
+        assertEquals(0, response.getContentAsByteArray().length);
+    }
+
+    @Test
+    void aReplayDoesNotChangeTheSavedContentType() throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 200, "application/json", "{}");
+
+        run(validPost("k1"), new MockHttpServletResponse(), create());
+
+        assertEquals("application/json", store.data.get(storedKey(null, "k1")).getContentType());
     }
 
     @Test

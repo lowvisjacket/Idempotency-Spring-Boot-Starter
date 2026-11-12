@@ -20,15 +20,16 @@ public class IdempotencyRecord {
     private String key;
     private String fingerprint;
     private Status status = Status.PENDING;
-    private String header;
+    /** The response's {@code Content-Type} exactly as sent (including any charset), or null if it had none. */
+    private String contentType;
     private String body;
     private int httpStatus;
     @JsonIgnore
     private Duration ttl;
-    public IdempotencyRecord(String key, String fingerprint, String header, String body, int httpStatus, Duration ttl) {
+    public IdempotencyRecord(String key, String fingerprint, String contentType, String body, int httpStatus, Duration ttl) {
         this.key = key;
         this.fingerprint = fingerprint;
-        this.header = header;
+        this.contentType = contentType;
         this.body = body;
         this.httpStatus = httpStatus;
         this.ttl = ttl;

@@ -11,11 +11,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -137,19 +139,20 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         int status = wrapper.getStatus();
         boolean saveable = status < 500 && !wrapper.isOverflowed() && wrapper.isCapturing();
 
+        String contentType = wrapper.getContentType();
         String body = null;
         if (saveable) {
             byte[] bytes = wrapper.getCapturedBody();
             if (bytes.length > 0) {
                 body = decodeUtf8(bytes);
-                saveable = body != null;
+                saveable = body != null && replayableAs(contentType, bytes);
             }
         }
 
         try {
             if (saveable) {
                 IdempotencyRecord done = new IdempotencyRecord(
-                        claim.getKey(), claim.getFingerprint(), null, body, status, claim.getTtl());
+                        claim.getKey(), claim.getFingerprint(), contentType, body, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
                 store.complete(done); // false = the key expired meanwhile; nothing more to do
             } else {
@@ -172,6 +175,36 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
     private static IdempotencyRecord claimOf(HttpServletRequest request) {
         return request.getAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE) instanceof IdempotencyRecord record
                 ? record : null;
+    }
+
+    /**
+     * The body is saved as UTF-8 text and replayed as UTF-8 bytes together with the saved Content-Type. That is only
+     * the same response if the Content-Type does not claim another charset. Plain ASCII is the same in every
+     * charset, so only non-ASCII bytes need the check.
+     *
+     * @return true if replaying these bytes with this Content-Type gives the client what it first received
+     */
+    private static boolean replayableAs(String contentType, byte[] bytes) {
+        boolean ascii = true;
+        for (byte b : bytes) {
+            if (b < 0) {
+                ascii = false;
+                break;
+            }
+        }
+        return ascii || declaresUtf8OrNoCharset(contentType);
+    }
+
+    private static boolean declaresUtf8OrNoCharset(String contentType) {
+        if (contentType == null) {
+            return true;
+        }
+        try {
+            Charset declared = MediaType.parseMediaType(contentType).getCharset();
+            return declared == null || StandardCharsets.UTF_8.equals(declared);
+        } catch (IllegalArgumentException e) {
+            return false; // not a media type we understand, or a charset the JVM does not know: cannot be sure
+        }
     }
 
     /** @return the text, or null if the bytes are not valid UTF-8 (strict: bad bytes are reported, not replaced) */

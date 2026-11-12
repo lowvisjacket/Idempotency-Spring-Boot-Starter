@@ -65,9 +65,15 @@ public class RedisTests {
     }
 
     @Test
+    void aMissingContentTypeReadsBackAsNull() {
+        assertTrue(store.claim(pendingRecord(Duration.ofSeconds(10))));
+        assertNull(store.find(KEY).orElseThrow().getContentType());
+    }
+
+    @Test
     void storedJsonReadsBackWithAllFields() {
         IdempotencyRecord record = pendingRecord(Duration.ofSeconds(10));
-        record.setHeader("Test");
+        record.setContentType("application/json;charset=UTF-8");
         record.setBody("Hello World");
         assertTrue(store.claim(record));
 
@@ -75,7 +81,7 @@ public class RedisTests {
 
         assertEquals(Status.PENDING, after.getStatus());
         assertEquals("fingerprint", after.getFingerprint());
-        assertEquals("Test", after.getHeader());
+        assertEquals("application/json;charset=UTF-8", after.getContentType());
         assertEquals("Hello World", after.getBody());
         assertEquals(200, after.getHttpStatus());
     }

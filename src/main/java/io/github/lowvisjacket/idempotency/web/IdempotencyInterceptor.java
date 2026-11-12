@@ -233,8 +233,14 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     private void replay(HttpServletResponse response, IdempotencyRecord saved) throws IOException {
         response.setStatus(saved.getHttpStatus());
         response.setHeader(IdempotencyDefaults.REPLAY_HEADER, "true");
+        if (saved.getContentType() != null) {
+            // exactly what the client first received, charset included, so the same bytes mean the same text
+            response.setContentType(saved.getContentType());
+        }
         if (saved.getBody() != null) {
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            if (saved.getContentType() == null) {
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            }
             response.getOutputStream().write(saved.getBody().getBytes(StandardCharsets.UTF_8));
         }
     }

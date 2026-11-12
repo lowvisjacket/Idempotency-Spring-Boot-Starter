@@ -142,6 +142,39 @@ class IdempotencyEndToEndTests {
     }
 
     @Test
+    void aReplayHasTheSameContentTypeAsTheFirstAnswer() throws Exception {
+        String key = newKey();
+        MvcResult first = send(post("/json").header(HEADER, key));
+        MvcResult second = send(post("/json").header(HEADER, key));
+
+        assertNotNull(first.getResponse().getContentType());
+        assertTrue(first.getResponse().getContentType().startsWith("application/json"));
+        assertEquals(first.getResponse().getContentType(), second.getResponse().getContentType());
+        assertEquals(first.getResponse().getContentAsString(), second.getResponse().getContentAsString());
+        assertEquals("true", second.getResponse().getHeader("Idempotency-Replayed"));
+        assertEquals(1, api.jsons.get());
+    }
+
+    @Test
+    void aTextReplayHasTheSameContentTypeAsTheFirstAnswerToo() throws Exception {
+        String key = newKey();
+        MvcResult first = send(post("/unicode").header(HEADER, key));
+        MvcResult second = send(post("/unicode").header(HEADER, key));
+
+        assertEquals(first.getResponse().getContentType(), second.getResponse().getContentType());
+        assertTrue(second.getResponse().getContentType().toLowerCase().contains("utf-8"));
+    }
+
+    @Test
+    void theSavedRecordRemembersTheContentType() throws Exception {
+        String key = newKey();
+        MvcResult first = send(post("/json").header(HEADER, key));
+
+        assertEquals(first.getResponse().getContentType(),
+                store.find(StoredKeys.build(null, key)).orElseThrow().getContentType());
+    }
+
+    @Test
     void anEmptyResponseIsReplayedAsEmpty() throws Exception {
         String key = newKey();
         send(post("/empty").header(HEADER, key));
@@ -333,6 +366,7 @@ class IdempotencyEndToEndTests {
     public static class Api {
         final AtomicInteger orders = new AtomicInteger();
         final AtomicInteger empties = new AtomicInteger();
+        final AtomicInteger jsons = new AtomicInteger();
         final AtomicInteger plain = new AtomicInteger();
         final AtomicInteger explosions = new AtomicInteger();
         final AtomicInteger broken = new AtomicInteger();
@@ -344,7 +378,7 @@ class IdempotencyEndToEndTests {
         volatile CountDownLatch slowRelease = new CountDownLatch(1);
 
         void reset() {
-            for (AtomicInteger c : new AtomicInteger[]{orders, empties, plain, explosions, broken, rejected, big, slow}) {
+            for (AtomicInteger c : new AtomicInteger[]{orders, jsons, empties, plain, explosions, broken, rejected, big, slow}) {
                 c.set(0);
             }
             lastBody = null;
@@ -363,6 +397,12 @@ class IdempotencyEndToEndTests {
         @PostMapping(value = "/unicode", produces = "text/plain;charset=UTF-8")
         public String unicode() {
             return "héllo ✓ 😀";
+        }
+
+        @Idempotent
+        @PostMapping(value = "/json", produces = "application/json")
+        public java.util.Map<String, Object> json() {
+            return java.util.Map.of("id", jsons.incrementAndGet(), "name", "José");
         }
 
         @Idempotent

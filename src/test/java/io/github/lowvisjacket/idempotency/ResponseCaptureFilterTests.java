@@ -274,6 +274,162 @@ class ResponseCaptureFilterTests {
         assertEquals(List.of("a", "b"), real.getHeaders("X-Many"));
     }
 
+    // =====================================================================================================
+    // The Content-Type is saved with the response, so a replay can send it again
+    // =====================================================================================================
+
+    /** A claimed request whose controller sets the given Content-Type and writes the given bytes. */
+    private MockHttpServletResponse serveTyped(String contentType, byte[] body) throws Exception {
+        seed();
+        return run((request, response) -> {
+            interceptorWins(request, response, claim);
+            if (contentType != null) response.setContentType(contentType);
+            response.getOutputStream().write(body);
+        });
+    }
+
+    @Test
+    void theContentTypeTheControllerSetIsSaved() throws Exception {
+        serveTyped("application/json", utf8("{}"));
+
+        assertEquals("application/json", stored().getContentType());
+        assertEquals(Status.COMPLETED, stored().getStatus());
+    }
+
+    @Test
+    void theSavedContentTypeKeepsItsCharset() throws Exception {
+        MockHttpServletResponse real = serveTyped("text/plain;charset=UTF-8", utf8("héllo"));
+
+        assertNotNull(stored().getContentType());
+        assertEquals(real.getContentType(), stored().getContentType(), "saved exactly as the client received it");
+        assertTrue(stored().getContentType().toLowerCase().contains("utf-8"));
+    }
+
+    @Test
+    void aResponseWithNoContentTypeSavesNull() throws Exception {
+        seed();
+        run((request, response) -> {
+            interceptorWins(request, response, claim);
+            ((HttpServletResponse) response).setStatus(204);
+        });
+
+        assertNull(stored().getContentType());
+        assertEquals(Status.COMPLETED, stored().getStatus());
+    }
+
+    @Test
+    void aContentTypeSetAfterTheBodyWasWrittenIsStillSaved() throws Exception {
+        seed();
+        run((request, response) -> {
+            interceptorWins(request, response, claim);
+            response.getOutputStream().write(utf8("{}"));
+            response.setContentType("application/json");
+        });
+
+        assertEquals("application/json", stored().getContentType());
+    }
+
+    @Test
+    void theLastContentTypeSetWins() throws Exception {
+        seed();
+        run((request, response) -> {
+            interceptorWins(request, response, claim);
+            response.setContentType("text/html");
+            response.setContentType("application/json");
+            response.getOutputStream().write(utf8("{}"));
+        });
+
+        assertEquals("application/json", stored().getContentType());
+    }
+
+    @Test
+    void aContentTypeSetBeforeAResetIsNotSaved() throws Exception {
+        seed();
+        run((request, response) -> {
+            interceptorWins(request, response, claim);
+            response.setContentType("text/html");
+            ((HttpServletResponse) response).reset();
+            response.getOutputStream().write(utf8("plain"));
+        });
+
+        assertNull(stored().getContentType());
+    }
+
+    @Test
+    void theContentTypeIsStillSentToTheClient() throws Exception {
+        MockHttpServletResponse real = serveTyped("application/json", utf8("{}"));
+
+        assertEquals("application/json", real.getContentType());
+    }
+
+    @Test
+    void aClaimThatIsDeletedSavesNoContentType() throws Exception {
+        seed();
+        run((request, response) -> {
+            interceptorWins(request, response, claim);
+            response.setContentType("application/json");
+            ((HttpServletResponse) response).setStatus(500);
+            response.getOutputStream().write(utf8("{}"));
+        });
+
+        assertNull(stored(), "a server error is deleted, not saved");
+        assertEquals(1, store.deletes.get());
+    }
+
+    // ---- a declared charset that is not UTF-8 cannot be replayed faithfully
+
+    @ParameterizedTest(name = "{0} with non-ASCII bytes is not saved")
+    @ValueSource(strings = {"text/plain;charset=ISO-8859-1", "text/plain; charset=windows-1252",
+            "application/json;charset=UTF-16", "text/plain;charset=no-such-charset"})
+    void aNonUtf8CharsetWithNonAsciiTextIsNotSavedButStillSent(String contentType) throws Exception {
+        byte[] bytes = utf8("café");
+
+        MockHttpServletResponse real = serveTyped(contentType, bytes);
+
+        assertNull(stored(), "the claim must be deleted so a retry can run again");
+        assertEquals(1, store.deletes.get());
+        assertEquals(0, store.completes.get());
+        assertArrayEquals(bytes, real.getContentAsByteArray(), "the client still gets the response");
+    }
+
+    @ParameterizedTest(name = "{0} with ASCII only is saved")
+    @ValueSource(strings = {"text/plain;charset=ISO-8859-1", "application/json;charset=UTF-16",
+            "text/plain;charset=no-such-charset"})
+    void aNonUtf8CharsetWithAsciiOnlyTextIsSaved(String contentType) throws Exception {
+        serveTyped(contentType, utf8("plain ascii"));
+
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertEquals(contentType, stored().getContentType());
+    }
+
+    @ParameterizedTest(name = "{0} with non-ASCII is saved")
+    @ValueSource(strings = {"text/plain;charset=UTF-8", "text/plain;charset=utf-8", "text/plain; charset=\"UTF-8\"",
+            "application/json", "text/plain"})
+    void utf8OrNoCharsetWithNonAsciiTextIsSaved(String contentType) throws Exception {
+        serveTyped(contentType, utf8("café ✓"));
+
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertEquals("café ✓", stored().getBody());
+    }
+
+    @Test
+    void aGarbageContentTypeWithAsciiOnlyTextDoesNotBreakAnything() throws Exception {
+        MockHttpServletResponse real = serveTyped("not a media type;;;", utf8("ok"));
+
+        assertEquals("ok", real.getContentAsString());
+        assertEquals(Status.COMPLETED, stored().getStatus());
+    }
+
+    @Test
+    void aGarbageContentTypeWithNonAsciiTextIsStillSentWhateverIsSaved() throws Exception {
+        byte[] bytes = utf8("café");
+
+        MockHttpServletResponse real = serveTyped("not a media type;;;", bytes);
+
+        assertArrayEquals(bytes, real.getContentAsByteArray());
+        assertEquals(1, store.completes.get() + store.deletes.get(), "the claim must be settled one way or the other");
+    }
+
     @Test
     void aGetRequestIsHandledToo() throws Exception {
         seed();
