@@ -4,7 +4,7 @@ import io.github.lowvisjacket.idempotency.config.IdempotencyDefaults;
 import io.github.lowvisjacket.idempotency.fingerprint.Fingerprint;
 import io.github.lowvisjacket.idempotency.fingerprint.RequestFilter;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
-import io.github.lowvisjacket.idempotency.web.AsyncHandlerGuard;
+import io.github.lowvisjacket.idempotency.web.IdempotentHandlerValidator;
 import io.github.lowvisjacket.idempotency.web.IdempotencyInterceptor;
 import io.github.lowvisjacket.idempotency.web.ProblemResponseWriter;
 import io.github.lowvisjacket.idempotency.web.ResponseCaptureFilter;
@@ -142,6 +142,6 @@ public class IdempotencyAutoConfiguration {
     @Bean
     public SmartInitializingSingleton idempotencyAsyncHandlerCheck(ObjectProvider<RequestMappingHandlerMapping> mappings) {
         return () -> mappings.orderedStream()
-                .forEach(mapping -> AsyncHandlerGuard.validate(mapping.getHandlerMethods().values()));
+                .forEach(mapping -> IdempotentHandlerValidator.validate(mapping.getHandlerMethods().values()));
     }
 }
