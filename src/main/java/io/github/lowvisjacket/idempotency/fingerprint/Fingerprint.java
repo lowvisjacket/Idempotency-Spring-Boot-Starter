@@ -27,6 +27,11 @@ public class Fingerprint {
         addPart(digest, text(request.getRequestURI()));
         addPart(digest, text(request.getQueryString() == null ? "" : request.getQueryString()));
         addPart(digest, normalizeBody(request.getSavedBody()));
+        // Form fields travel in the parameter map, not in the body stream. Added only when present, so every other
+        // request keeps the fingerprint it always had.
+        if (!request.getFormParameters().isEmpty()) {
+            addPart(digest, text(request.getFormParameters()));
+        }
 
         return HexFormat.of().formatHex(digest.digest());
     }

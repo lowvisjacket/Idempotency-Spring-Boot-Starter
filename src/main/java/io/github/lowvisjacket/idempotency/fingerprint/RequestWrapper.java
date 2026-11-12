@@ -34,6 +34,11 @@ public class RequestWrapper extends HttpServletRequestWrapper {
     private final byte[] savedBody;
     /** True when the body is longer than the cap, so {@link #savedBody} is only its first bytes. */
     private final boolean exceedsCap;
+    /**
+     * A canonical form of the request's form fields, or empty. Form fields are read by the container (or by Spring's
+     * form filter) <em>instead of</em> from the body stream, so they must be fingerprinted from the parameter map.
+     */
+    private final String formParameters;
     /** Only for {@link #exceedsCap}: the unread remainder of the container's stream. */
     private final ServletInputStream remainder;
     /** Only for {@link #exceedsCap}: the one stream handed out (the remainder can only be read once). */
@@ -52,13 +57,16 @@ public class RequestWrapper extends HttpServletRequestWrapper {
         if (savedBody.length > IdempotencyDefaults.MAX_BODY_SIZE_BYTES) throw new FingerprintException("Body too large");
         this.exceedsCap = false;
         this.remainder = null;
+        this.formParameters = "";
     }
 
-    private RequestWrapper(HttpServletRequest request, byte[] savedBody, boolean exceedsCap, ServletInputStream remainder) {
+    private RequestWrapper(HttpServletRequest request, byte[] savedBody, boolean exceedsCap, ServletInputStream remainder,
+                           String formParameters) {
         super(request);
         this.savedBody = savedBody;
         this.exceedsCap = exceedsCap;
         this.remainder = remainder;
+        this.formParameters = formParameters;
     }
 
     /**
@@ -69,10 +77,32 @@ public class RequestWrapper extends HttpServletRequestWrapper {
      * {@code @Idempotent} endpoint.
      */
     public static RequestWrapper capture(HttpServletRequest request) throws IOException {
+        // A form body is turned into parameters by the container (POST) or by Spring's FormContentFilter (PUT, PATCH),
+        // which consume the stream. Ask for the parameters first, so they are parsed from the intact body and stay
+        // available to @RequestParam, and fingerprint them from the parameter map.
+        String form = isForm(request) ? canonicalForm(request.getParameterMap()) : "";
         ServletInputStream in = request.getInputStream();
         byte[] head = in.readNBytes(IdempotencyDefaults.MAX_BODY_SIZE_BYTES + 1);
-        boolean exceeds = head.length > IdempotencyDefaults.MAX_BODY_SIZE_BYTES;
-        return new RequestWrapper(request, head, exceeds, exceeds ? in : null);
+        boolean exceeds = head.length > IdempotencyDefaults.MAX_BODY_SIZE_BYTES
+                || form.length() > IdempotencyDefaults.MAX_BODY_SIZE_BYTES;
+        return new RequestWrapper(request, head, exceeds, exceeds ? in : null, form);
+    }
+
+    private static boolean isForm(HttpServletRequest request) {
+        String contentType = request.getContentType();
+        return contentType != null && contentType.regionMatches(true, 0, "application/x-www-form-urlencoded", 0, 33);
+    }
+
+    private static String canonicalForm(java.util.Map<String, String[]> parameters) {
+        StringBuilder out = new StringBuilder();
+        new java.util.TreeMap<>(parameters).forEach((name, values) -> {
+            for (String value : values) {
+                if (out.length() > 0) out.append('&');
+                out.append(java.net.URLEncoder.encode(name, StandardCharsets.UTF_8)).append('=')
+                        .append(java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+            }
+        });
+        return out.toString();
     }
 
     /**
@@ -80,12 +110,17 @@ public class RequestWrapper extends HttpServletRequestWrapper {
      * buffer: the controller will read the real stream itself.
      */
     public static RequestWrapper withoutBody(HttpServletRequest request) {
-        return new RequestWrapper(request, new byte[0], false, null);
+        return new RequestWrapper(request, new byte[0], false, null, "");
     }
 
     /** @return the bytes read from the body: all of it, or only its first bytes when {@link #exceedsCap()} */
     public byte[] getSavedBody() {
         return savedBody;
+    }
+
+    /** @return the request's form fields in a canonical text form, or an empty string if it is not a form post */
+    public String getFormParameters() {
+        return formParameters;
     }
 
     /** @return true if the body is longer than the cap and so cannot be fingerprinted */
