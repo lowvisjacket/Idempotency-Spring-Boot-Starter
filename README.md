@@ -1,5 +1,8 @@
 # Idempotency Spring Boot Starter
 
+[![CI](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml/badge.svg)](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml)
+[![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.x-6DB33F.svg)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 Make `POST`, `PUT` and `PATCH` endpoints safe to retry. Put `@Idempotent` on a controller method, and a repeated
