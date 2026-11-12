@@ -17,6 +17,9 @@ public enum ProblemType {
     /** A request with this key is still being processed. */
     REQUEST_IN_PROGRESS(409, "urn:idempotency:request-in-progress", "Request already in progress"),
 
+    /** The endpoint only serves identified callers and this request has no identity. */
+    CALLER_NOT_IDENTIFIED(401, "urn:idempotency:caller-not-identified", "Caller not identified"),
+
     /** The request body is larger than the library will buffer. */
     BODY_TOO_LARGE(413, "urn:idempotency:body-too-large", "Request body too large"),
 

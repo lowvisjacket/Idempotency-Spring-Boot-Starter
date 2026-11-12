@@ -11,7 +11,6 @@ import io.github.lowvisjacket.idempotency.fingerprint.RequestWrapper;
 import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
 import io.github.lowvisjacket.idempotency.model.Status;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
-import io.github.lowvisjacket.idempotency.store.StoredKeys;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,7 +21,6 @@ import org.springframework.web.util.WebUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.Principal;
 import java.time.Duration;
 import java.util.*;
 
@@ -91,6 +89,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     private final IdempotencyStore store;
     private final Fingerprint fingerprint;
     private final ProblemResponseWriter writer;
+    private final CallerScope callerScope;
 
     /**
      * @param store       where records are claimed, read and kept
@@ -99,6 +98,16 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
      * @throws NullPointerException if any argument is null
      */
     public IdempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint, ProblemResponseWriter writer) {
+        this(store, fingerprint, writer, new CallerScope());
+    }
+
+    /**
+     * @param callerScope decides who the caller is and so the stored key (namespace, secret, extra identity headers)
+     * @throws NullPointerException if any argument is null
+     */
+    public IdempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint, ProblemResponseWriter writer,
+                                  CallerScope callerScope) {
+        this.callerScope = Objects.requireNonNull(callerScope, "callerScope");
         this.store = Objects.requireNonNull(store, "store");
         this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
         this.writer = Objects.requireNonNull(writer, "writer");
@@ -139,8 +148,12 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
 
         Duration ttl = TtlParser.parse(idempotent.ttl());
 
-        Principal principal = request.getUserPrincipal();
-        String storedKey = StoredKeys.build(principal == null ? null : principal.getName(), key);
+        String storedKey = callerScope.storedKey(request, key);
+        if (storedKey == null) {
+            writer.write(response, ProblemType.CALLER_NOT_IDENTIFIED,
+                    "This endpoint is only available to identified callers");
+            return false;
+        }
 
         String hash;
         try {

@@ -781,10 +781,11 @@ class IdempotencyInterceptorTests {
     }
 
     @Test
-    void aPrincipalWithABlankNameIsTreatedAsAnonymous() throws Exception {
+    void aPrincipalWithABlankNameIsAnIdentifiedCallerAndNeverSharesTheAnonymousNamespace() throws Exception {
         assertTrue(run(asUser(validPost("k1"), "  "), new MockHttpServletResponse(), create()));
 
-        assertEquals(storedKey(null, "k1"), store.claimed.get(0).getKey());
+        assertEquals(storedKey("  ", "k1"), store.claimed.get(0).getKey());
+        assertNotEquals(storedKey(null, "k1"), store.claimed.get(0).getKey());
     }
 
     @Test

@@ -5,6 +5,7 @@ import io.github.lowvisjacket.idempotency.fingerprint.Fingerprint;
 import io.github.lowvisjacket.idempotency.fingerprint.RequestFilter;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.lowvisjacket.idempotency.web.IdempotentHandlerValidator;
+import io.github.lowvisjacket.idempotency.web.CallerScope;
 import io.github.lowvisjacket.idempotency.web.IdempotencyInterceptor;
 import io.github.lowvisjacket.idempotency.web.ProblemResponseWriter;
 import io.github.lowvisjacket.idempotency.web.ResponseCaptureFilter;
@@ -85,9 +86,16 @@ public class IdempotencyAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    public CallerScope callerScope(IdempotencyProperties properties) {
+        return new CallerScope(properties.getNamespace(), properties.getKeySecret(), properties.getCallerHeaders(),
+                properties.getAnonymousAccess() == IdempotencyProperties.AnonymousAccess.REJECT);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public IdempotencyInterceptor idempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint,
-                                                         ProblemResponseWriter writer) {
-        return new IdempotencyInterceptor(store, fingerprint, writer);
+                                                         ProblemResponseWriter writer, CallerScope callerScope) {
+        return new IdempotencyInterceptor(store, fingerprint, writer, callerScope);
     }
 
     /**
