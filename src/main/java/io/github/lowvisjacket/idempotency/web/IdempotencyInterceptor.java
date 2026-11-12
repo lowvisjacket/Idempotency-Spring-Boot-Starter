@@ -139,7 +139,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
 
         String hash;
         try {
-            RequestWrapper wrapper = request instanceof RequestWrapper already ? already : new RequestWrapper(request);
+            RequestWrapper wrapper = request instanceof RequestWrapper already ? already : RequestWrapper.withoutBody(request);
             hash = fingerprint.hash(wrapper);
         } catch (FingerprintException e) {
             return refuseBodyTooLarge(response);
