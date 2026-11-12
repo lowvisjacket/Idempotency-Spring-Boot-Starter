@@ -135,7 +135,8 @@ class ReplayedHeadersTests {
 
     @Test
     void theListOfReplayedHeadersIsTheDocumentedOne() {
-        assertEquals(List.of("Location", "Content-Location", "ETag", "Content-Language"),
+        assertEquals(List.of("Location", "Content-Location", "ETag", "Content-Language",
+                        "Cache-Control", "Expires", "Pragma", "Vary"),
                 IdempotencyDefaults.REPLAYED_RESPONSE_HEADERS);
     }
 
@@ -228,10 +229,23 @@ class ReplayedHeadersTests {
     }
 
     @ParameterizedTest(name = "{0} is saved")
-    @ValueSource(strings = {"Location", "Content-Location", "ETag", "Content-Language"})
+    @ValueSource(strings = {"Location", "Content-Location", "ETag", "Content-Language", "Cache-Control", "Expires", "Pragma", "Vary"})
     void everyAllowedHeaderIsSaved(String name) throws Exception {
         serve(r -> r.setHeader(name, "value-1"));
         assertEquals(headers(name, "value-1"), stored().getHeaders());
+    }
+
+    @Test
+    void aNoStoreResponseStillSaysSoWhenItIsReplayed() throws Exception {
+        serve(r -> {
+            r.setHeader("Cache-Control", "no-store");
+            r.setHeader("Vary", "Authorization");
+        });
+
+        MockHttpServletResponse replayed = replay();
+
+        assertEquals("no-store", replayed.getHeader("Cache-Control"));
+        assertEquals("Authorization", replayed.getHeader("Vary"));
     }
 
     @Test
@@ -280,7 +294,6 @@ class ReplayedHeadersTests {
             r.setHeader("Set-Cookie", "session=secret");
             r.setHeader("Authorization", "Bearer abc");
             r.setHeader("X-Request-Id", "req-9");
-            r.setHeader("Cache-Control", "no-store");
             r.setHeader("Date", "Tue, 15 Nov 1994 08:12:31 GMT");
             r.setHeader("Retry-After", "5");
             r.setHeader("Idempotency-Replayed", "true");

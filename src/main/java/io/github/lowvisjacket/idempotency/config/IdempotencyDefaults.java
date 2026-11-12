@@ -46,7 +46,10 @@ public final class IdempotencyDefaults {
      * it is either private, or wrong for a later request. Content-Type has its own field.
      */
     public static final List<String> REPLAYED_RESPONSE_HEADERS =
-            List.of("Location", "Content-Location", "ETag", "Content-Language");
+            List.of("Location", "Content-Location", "ETag", "Content-Language",
+                    // How a response may be cached. A sensitive response sent with "Cache-Control: no-store" must not
+                    // lose that on replay, or an intermediary may keep a copy of it.
+                    "Cache-Control", "Expires", "Pragma", "Vary");
 
     /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
     /**
