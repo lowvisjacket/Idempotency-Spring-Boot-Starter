@@ -1,0 +1,23 @@
+name: Assign pull requests
+
+# pull_request_target (not pull_request) so it also works for PRs from forks and from Dependabot, whose tokens are
+# read-only under pull_request. It is safe here because nothing from the PR is checked out or executed.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Assign the maintainer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr edit "$PR_URL" --add-assignee lowvisjacket
