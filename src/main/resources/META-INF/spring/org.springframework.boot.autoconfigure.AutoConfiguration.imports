@@ -1,2 +1,3 @@
 io.github.lowvisjacket.idempotency.autoconfigure.IdempotencyStoreAutoConfiguration
 io.github.lowvisjacket.idempotency.autoconfigure.IdempotencyAutoConfiguration
+io.github.lowvisjacket.idempotency.autoconfigure.IdempotencyCircuitBreakerAutoConfiguration
