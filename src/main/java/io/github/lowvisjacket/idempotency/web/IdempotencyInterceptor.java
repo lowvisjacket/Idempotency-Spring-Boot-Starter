@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.WebUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +50,13 @@ import java.util.Optional;
  *       {@link io.github.lowvisjacket.idempotency.fingerprint.RequestWrapper} (the filter only wraps POST, PUT and
  *       PATCH), wrap it here; those methods carry no body, so nothing is lost for the controller.</li>
  *   <li><b>Claim.</b> Try {@link IdempotencyStore#claim} with a {@code PENDING} record (fingerprint, TTL from the
- *       annotation, no response yet). If it wins, return {@code true} and the controller runs.</li>
+ *       annotation, no response yet). If it wins (first try or the retry below), hand the record over and
+ *       return {@code true} so the controller runs: set the claimed record as the request attribute
+ *       {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#CLAIM_ATTRIBUTE}, and call
+ *       {@link CapturingResponse#startCapturing()} on the response (found with
+ *       {@code WebUtils.getNativeResponse}, because another filter may have wrapped it). If there is no
+ *       {@code CapturingResponse}, the request still runs, but the record can never be completed. Refusals and
+ *       replays set nothing: they own no record, and the filter must not touch the real owner's.</li>
  *   <li><b>Lost the claim.</b> Look the record up with {@link IdempotencyStore#find}:
  *     <ul>
  *       <li>missing (it expired or was deleted between the two calls): claim again, <b>once</b>. If that is lost
@@ -142,16 +149,35 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             return refuseBodyTooLarge(response);
         }
 
+        /**
+         * HINT (new): winning a claim now has two extra duties, in BOTH places where the claim can be won (the
+         * first try, and the retry inside `found.isEmpty()`). Put them in one small private method and call it
+         * from both, so they cannot drift apart:
+         *   1. request.setAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE, claimRecord);
+         *      (the response filter reads this to know which record to complete or delete)
+         *   2. find the CapturingResponse and call startCapturing() on it. Do not test `response instanceof
+         *      CapturingResponse`: another filter (compression, logging) may have wrapped our wrapper, and then
+         *      the check fails. WebUtils.getNativeResponse(response, CapturingResponse.class) looks through the
+         *      wrappers; it returns null when the filter is not installed, in which case simply skip this step.
+         * Refusals and replays do neither of these. They own no record.
+         */
         // Only the store calls are inside the try, so a bug elsewhere is not reported as "store unavailable".
         IdempotencyRecord claimRecord = new IdempotencyRecord(storedKey, hash, null, null, 0, ttl);
         IdempotencyRecord existing;
         try {
-            if (store.claim(claimRecord)) return true;
+            if (store.claim(claimRecord)) {
+                handOver(request, response, claimRecord);
+                return true;
+            }
 
             Optional<IdempotencyRecord> found = store.find(storedKey);
             if (found.isEmpty()) {
                 // It expired or was deleted between the two calls: try once more, never loop.
-                return store.claim(claimRecord) || refuseInProgress(response);
+                if (store.claim(claimRecord)) {
+                    handOver(request, response, claimRecord);
+                    return true;
+                }
+                return refuseInProgress(response);
             }
             existing = found.get();
         } catch (RuntimeException e) {
@@ -211,5 +237,11 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             response.getOutputStream().write(saved.getBody().getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    private void handOver(HttpServletRequest request, HttpServletResponse response, IdempotencyRecord claim) {
+        request.setAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE, claim);
+        CapturingResponse cr = WebUtils.getNativeResponse(response, CapturingResponse.class);
+        if (cr != null) cr.startCapturing();
     }
 }

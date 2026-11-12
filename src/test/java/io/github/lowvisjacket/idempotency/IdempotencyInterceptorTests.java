@@ -9,9 +9,11 @@ import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
 import io.github.lowvisjacket.idempotency.model.Status;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.lowvisjacket.idempotency.store.StoredKeys;
+import io.github.lowvisjacket.idempotency.web.CapturingResponse;
 import io.github.lowvisjacket.idempotency.web.IdempotencyInterceptor;
 import io.github.lowvisjacket.idempotency.web.ProblemResponseWriter;
 import io.github.lowvisjacket.idempotency.web.ProblemType;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -92,6 +94,12 @@ class IdempotencyInterceptorTests {
         final AtomicInteger claims = new AtomicInteger();
         final AtomicInteger finds = new AtomicInteger();
         final AtomicInteger writes = new AtomicInteger();   // complete + delete
+        final AtomicInteger completes = new AtomicInteger();
+        final AtomicInteger deletes = new AtomicInteger();
+        volatile RuntimeException completeFailure;
+        volatile RuntimeException deleteFailure;
+        /** Called inside {@code complete}, before the record is stored (to look at the world at that moment). */
+        volatile java.util.function.Consumer<IdempotencyRecord> onComplete;
         final AtomicInteger others = new AtomicInteger();   // exists + getRemainingTtl
         volatile RuntimeException claimFailure;
         volatile RuntimeException findFailure;
@@ -106,6 +114,8 @@ class IdempotencyInterceptorTests {
             claims.set(0);
             finds.set(0);
             writes.set(0);
+            completes.set(0);
+            deletes.set(0);
             others.set(0);
             claimed.clear();
         }
@@ -140,12 +150,18 @@ class IdempotencyInterceptorTests {
         @Override
         public boolean complete(IdempotencyRecord record) {
             writes.incrementAndGet();
+            completes.incrementAndGet();
+            if (completeFailure != null) throw completeFailure;
+            java.util.function.Consumer<IdempotencyRecord> hook = onComplete;
+            if (hook != null) hook.accept(record);
             return data.computeIfPresent(record.getKey(), (k, old) -> copy(record)) != null;
         }
 
         @Override
         public boolean delete(String key) {
             writes.incrementAndGet();
+            deletes.incrementAndGet();
+            if (deleteFailure != null) throw deleteFailure;
             return data.remove(key) != null;
         }
 
@@ -947,5 +963,145 @@ class IdempotencyInterceptorTests {
             assertEquals(201, response.getStatus());
             assertEquals("{\"id\":7}", response.getContentAsString());
         }
+    }
+
+    // =====================================================================================================
+    // M. Hand-over to the response capture: the claim attribute and startCapturing()
+    // =====================================================================================================
+
+    private static IdempotencyRecord claimAttribute(MockHttpServletRequest request) {
+        return (IdempotencyRecord) request.getAttribute(IdempotencyDefaults.CLAIM_ATTRIBUTE);
+    }
+
+    @Test
+    void aWonClaimIsHandedToTheResponseFilterThroughTheRequest() throws Exception {
+        MockHttpServletRequest request = validPost("k1");
+
+        assertTrue(run(request, new MockHttpServletResponse(), create()));
+
+        IdempotencyRecord handedOver = claimAttribute(request);
+        assertNotNull(handedOver, "without this the filter cannot know which record to complete");
+        assertEquals(storedKey(null, "k1"), handedOver.getKey());
+        assertEquals(Status.PENDING, handedOver.getStatus());
+        assertEquals(store.claimed.get(0).getFingerprint(), handedOver.getFingerprint());
+        assertEquals(Duration.ofHours(24), handedOver.getTtl(), "completion must reset the ttl to the annotation's");
+    }
+
+    @Test
+    void aClaimWonOnTheRetryIsHandedOverToo() throws Exception {
+        store.claimsToLose.set(1);
+        MockHttpServletRequest request = validPost("k1");
+
+        assertTrue(run(request, new MockHttpServletResponse(), create()));
+
+        assertNotNull(claimAttribute(request));
+    }
+
+    @Test
+    void aPendingRefusalHandsNothingOver() throws Exception {
+        seedPending(null, "k1", validPost("k1"));
+        MockHttpServletRequest request = validPost("k1");
+
+        assertFalse(run(request, new MockHttpServletResponse(), create()));
+
+        assertNull(claimAttribute(request), "this request owns nothing; completing would damage the real owner's record");
+    }
+
+    @Test
+    void aReusedKeyRefusalHandsNothingOver() throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 201, "saved");
+        MockHttpServletRequest request = variant("POST", "/other", null, BODY, "k1");
+
+        assertFalse(run(request, new MockHttpServletResponse(), create()));
+
+        assertNull(claimAttribute(request));
+    }
+
+    @Test
+    void aReplayHandsNothingOver() throws Exception {
+        seedCompleted(null, "k1", validPost("k1"), 201, "saved");
+        MockHttpServletRequest request = validPost("k1");
+
+        assertFalse(run(request, new MockHttpServletResponse(), create()));
+
+        assertNull(claimAttribute(request), "a replay must never complete or delete the stored record");
+    }
+
+    @Test
+    void anInvalidKeyHandsNothingOver() throws Exception {
+        MockHttpServletRequest request = validPost("bad key");
+
+        assertFalse(run(request, new MockHttpServletResponse(), create()));
+
+        assertNull(claimAttribute(request));
+    }
+
+    @Test
+    void aStoreFailureHandsNothingOver() throws Exception {
+        store.claimFailure = new RedisException("down");
+        MockHttpServletRequest request = validPost("k1");
+
+        assertFalse(run(request, new MockHttpServletResponse(), create()));
+
+        assertNull(claimAttribute(request));
+    }
+
+    @Test
+    void aPlainEndpointHandsNothingOver() throws Exception {
+        MockHttpServletRequest request = validPost("k1");
+
+        assertTrue(run(request, new MockHttpServletResponse(), handler(new Controller(), "plain")));
+
+        assertNull(claimAttribute(request));
+    }
+
+    @Test
+    void aWonClaimStartsCapturingTheResponse() throws Exception {
+        CapturingResponse capture = new CapturingResponse(new MockHttpServletResponse(), 1024);
+
+        assertTrue(interceptor.preHandle(asFilterWould(validPost("k1")), capture, create()));
+
+        assertTrue(capture.isCapturing(), "the body must be held back so it can be saved before the client sees it");
+    }
+
+    @Test
+    void aClaimWonOnTheRetryStartsCapturingToo() throws Exception {
+        store.claimsToLose.set(1);
+        CapturingResponse capture = new CapturingResponse(new MockHttpServletResponse(), 1024);
+
+        assertTrue(interceptor.preHandle(asFilterWould(validPost("k1")), capture, create()));
+
+        assertTrue(capture.isCapturing());
+    }
+
+    @Test
+    void aRefusalDoesNotStartCapturing() throws Exception {
+        seedPending(null, "k1", validPost("k1"));
+        MockHttpServletResponse real = new MockHttpServletResponse();
+        CapturingResponse capture = new CapturingResponse(real, 1024);
+
+        assertFalse(interceptor.preHandle(asFilterWould(validPost("k1")), capture, create()));
+
+        assertFalse(capture.isCapturing());
+        assertProblem(real, ProblemType.REQUEST_IN_PROGRESS);
+    }
+
+    @Test
+    void theCapturingResponseIsFoundEvenWhenAnotherWrapperSitsAroundIt() throws Exception {
+        CapturingResponse capture = new CapturingResponse(new MockHttpServletResponse(), 1024);
+        HttpServletResponseWrapper outer = new HttpServletResponseWrapper(new HttpServletResponseWrapper(capture));
+
+        assertTrue(interceptor.preHandle(asFilterWould(validPost("k1")), outer, create()));
+
+        assertTrue(capture.isCapturing(), "another filter (compression, logging) may have wrapped the response");
+    }
+
+    @Test
+    void aPlainResponseWithoutTheFilterStillLetsTheRequestRun() throws Exception {
+        MockHttpServletRequest request = validPost("k1");
+
+        assertTrue(run(request, new MockHttpServletResponse(), create()));
+
+        assertNotNull(claimAttribute(request));
     }
 }

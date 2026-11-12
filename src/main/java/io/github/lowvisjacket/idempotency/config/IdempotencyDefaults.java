@@ -20,6 +20,12 @@ public final class IdempotencyDefaults {
     /** Longest idempotency key (in characters) a client may send. */
     public static final int MAX_KEY_LENGTH = 255;
 
+    /**
+     * Largest response body (in bytes) the library holds in memory so it can be saved and replayed. A bigger
+     * response is still sent to the client in full, but it cannot be saved.
+     */
+    public static final int MAX_RESPONSE_SIZE_BYTES = 64 * 1024;
+
     // --- Names ---
 
     /** Default request header that carries the client's idempotency key. */
@@ -31,8 +37,26 @@ public final class IdempotencyDefaults {
      */
     public static final String BODY_EXCEEDS_CAP_ATTRIBUTE = "io.github.lowvisjacket.idempotency.BODY_EXCEEDS_CAP";
 
+    /**
+     * Request attribute the interceptor sets, to the {@code PENDING} record it just claimed, when a request wins its
+     * claim. The response filter reads it after the controller has run to know which record to complete or delete.
+     * Absent means "this request did not claim anything" (plain endpoint, refusal, or replay).
+     */
+    public static final String CLAIM_ATTRIBUTE = "io.github.lowvisjacket.idempotency.CLAIM";
+
     /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
     public static final String REPLAY_HEADER = "Idempotency-Replayed";
+
+    // --- Filter order ---
+
+    /**
+     * Order of the response-capturing filter. Lower runs first (outer). Spring Security's filter chain is at -100, so
+     * this runs after it: a request Security already rejected never reaches the library.
+     */
+    public static final int RESPONSE_FILTER_ORDER = -50;
+
+    /** Order of the request-body-caching filter; one step inside the response filter. */
+    public static final int REQUEST_FILTER_ORDER = -49;
 
     // --- Stored keys ---
 
