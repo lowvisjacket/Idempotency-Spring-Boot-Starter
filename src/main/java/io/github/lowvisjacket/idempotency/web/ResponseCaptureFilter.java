@@ -44,6 +44,8 @@ import java.util.*;
  *       replayed, and <b>completed</b> otherwise:
  *     <ul>
  *       <li>status 500 or above: delete (a failure is retried, not replayed);</li>
+ *       <li>status 401, 403, 407, 408, 425 or 429 ({@link IdempotencyDefaults#NEVER_SAVED_STATUSES}): delete, so a
+ *           caller who was refused or throttled is not told the same thing for the whole TTL;</li>
  *       <li>the body went over {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#MAX_RESPONSE_SIZE_BYTES}
  *           (the response is still sent in full): delete, since it cannot be saved without cutting it;</li>
  *       <li>the body is not valid UTF-8 (the record stores text): delete;</li>
@@ -145,7 +147,8 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
     /** Completes the claim when the response can be replayed, deletes it otherwise. Never throws for store errors. */
     private void settle(IdempotencyRecord claim, CapturingResponse wrapper) {
         int status = wrapper.getStatus();
-        boolean saveable = status < 500 && !wrapper.isOverflowed() && wrapper.isCapturing();
+        boolean saveable = status < 500 && !IdempotencyDefaults.NEVER_SAVED_STATUSES.contains(status)
+                && !wrapper.isOverflowed() && wrapper.isCapturing();
 
         String contentType = wrapper.getContentType();
         String body = null;

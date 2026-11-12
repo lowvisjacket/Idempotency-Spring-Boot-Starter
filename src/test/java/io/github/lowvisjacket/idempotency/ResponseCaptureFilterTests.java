@@ -172,7 +172,7 @@ class ResponseCaptureFilterTests {
     }
 
     @ParameterizedTest(name = "status {0} is saved for replay")
-    @ValueSource(ints = {200, 201, 202, 204, 301, 302, 304, 400, 401, 403, 404, 409, 418, 422, 429, 499})
+    @ValueSource(ints = {200, 201, 202, 204, 301, 302, 304, 400, 404, 409, 418, 422, 499})
     void everyStatusBelow500IsSaved(int status) throws Exception {
         MockHttpServletResponse real = serve(status, "body-" + status);
 
@@ -182,6 +182,16 @@ class ResponseCaptureFilterTests {
         assertEquals(0, store.deletes.get());
         assertEquals(status, real.getStatus());
         assertEquals("body-" + status, real.getContentAsString());
+    }
+
+    @ParameterizedTest(name = "status {0} is not saved")
+    @ValueSource(ints = {401, 403, 407, 408, 425, 429})
+    void refusalsAndThrottlingAreNeverFrozenForTheWholeTtl(int status) throws Exception {
+        MockHttpServletResponse real = serve(status, "no-" + status);
+
+        assertNull(stored(), "the retry must be judged afresh");
+        assertEquals(status, real.getStatus());
+        assertEquals("no-" + status, real.getContentAsString());
     }
 
     @Test

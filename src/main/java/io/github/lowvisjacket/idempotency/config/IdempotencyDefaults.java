@@ -49,6 +49,12 @@ public final class IdempotencyDefaults {
             List.of("Location", "Content-Location", "ETag", "Content-Language");
 
     /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
+    /**
+     * Statuses that say "not now" or "not you" rather than "this is the outcome of your request". They are never
+     * saved: a retry must be judged afresh, not told for the whole TTL that the caller is forbidden or throttled.
+     */
+    public static final java.util.Set<Integer> NEVER_SAVED_STATUSES = java.util.Set.of(401, 403, 407, 408, 425, 429);
+
     public static final String REPLAY_HEADER = "Idempotency-Replayed";
 
     /**
