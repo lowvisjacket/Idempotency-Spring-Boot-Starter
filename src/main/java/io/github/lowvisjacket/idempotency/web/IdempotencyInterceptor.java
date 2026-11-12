@@ -180,7 +180,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     }
 
     /** The annotation on the method, else on its class; null if neither has one. */
-    private static Idempotent findIdempotent(HandlerMethod method) {
+    static Idempotent findIdempotent(HandlerMethod method) {
         Idempotent onMethod = method.getMethodAnnotation(Idempotent.class);
         return onMethod != null ? onMethod : method.getBeanType().getAnnotation(Idempotent.class);
     }

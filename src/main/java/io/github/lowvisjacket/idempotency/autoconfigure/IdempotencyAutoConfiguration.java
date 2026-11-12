@@ -4,6 +4,7 @@ import io.github.lowvisjacket.idempotency.config.IdempotencyDefaults;
 import io.github.lowvisjacket.idempotency.fingerprint.Fingerprint;
 import io.github.lowvisjacket.idempotency.fingerprint.RequestFilter;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
+import io.github.lowvisjacket.idempotency.web.AsyncHandlerGuard;
 import io.github.lowvisjacket.idempotency.web.IdempotencyInterceptor;
 import io.github.lowvisjacket.idempotency.web.ProblemResponseWriter;
 import io.github.lowvisjacket.idempotency.web.ResponseCaptureFilter;
@@ -15,9 +16,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -125,5 +129,19 @@ public class IdempotencyAutoConfiguration {
                 registry.addInterceptor(interceptor).addPathPatterns("/**");
             }
         };
+    }
+
+    /**
+     * Checks every handler once all beans exist (the handler mapping has found the controllers by then) and stops the
+     * application if an {@code @Idempotent} handler completes asynchronously.
+     *
+     * @param mappings the application's handler mappings
+     * @return the check, run by Spring after all singletons are created
+     * @see AsyncHandlerGuard
+     */
+    @Bean
+    public SmartInitializingSingleton idempotencyAsyncHandlerCheck(ObjectProvider<RequestMappingHandlerMapping> mappings) {
+        return () -> mappings.orderedStream()
+                .forEach(mapping -> AsyncHandlerGuard.validate(mapping.getHandlerMethods().values()));
     }
 }

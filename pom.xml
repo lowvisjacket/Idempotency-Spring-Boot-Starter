@@ -11,24 +11,39 @@
 	<groupId>io.github.lowvisjacket</groupId>
 	<artifactId>idempotency-spring-boot-starter</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
-	<url/>
+	<name>Idempotency Spring Boot Starter</name>
+	<description>Makes POST, PUT and PATCH endpoints safe to retry: annotate a controller method with @Idempotent and a repeated request with the same Idempotency-Key gets the saved response instead of running twice.</description>
+	<url>https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter</url>
+	<inceptionYear>2026</inceptionYear>
 	<licenses>
-		<license/>
+		<license>
+			<name>Apache License, Version 2.0</name>
+			<url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+			<distribution>repo</distribution>
+		</license>
 	</licenses>
 	<developers>
-		<developer/>
+		<developer>
+			<id>lowvisjacket</id>
+			<name>lowvisjacket</name>
+			<url>https://github.com/lowvisjacket</url>
+		</developer>
 	</developers>
 	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
+		<connection>scm:git:https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter.git</connection>
+		<developerConnection>scm:git:git@github.com:lowvisjacket/Idempotency-Spring-Boot-Starter.git</developerConnection>
+		<tag>HEAD</tag>
+		<url>https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter</url>
 	</scm>
+	<issueManagement>
+		<system>GitHub Issues</system>
+		<url>https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/issues</url>
+	</issueManagement>
 	<properties>
 		<java.version>21</java.version>
 		<resilience4j.version>2.3.0</resilience4j.version>
+		<central-publishing-maven-plugin.version>0.8.0</central-publishing-maven-plugin.version>
+		<project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -137,5 +152,61 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<profile>
+			<id>release</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-source-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>attach-sources</id>
+								<goals>
+									<goal>jar-no-fork</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-javadoc-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>attach-javadocs</id>
+								<goals>
+									<goal>jar</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-gpg-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>sign-artifacts</id>
+								<phase>verify</phase>
+								<goals>
+									<goal>sign</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.sonatype.central</groupId>
+						<artifactId>central-publishing-maven-plugin</artifactId>
+						<version>${central-publishing-maven-plugin.version}</version>
+						<extensions>true</extensions>
+						<configuration>
+							<publishingServerId>central</publishingServerId>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>
