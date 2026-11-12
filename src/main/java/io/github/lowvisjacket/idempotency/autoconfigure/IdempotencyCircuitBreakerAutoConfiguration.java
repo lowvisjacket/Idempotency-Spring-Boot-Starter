@@ -6,7 +6,7 @@ import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -77,19 +77,21 @@ public class IdempotencyCircuitBreakerAutoConfiguration {
 
         /**
          * Wraps store beans. {@code static} because a post-processor is created before the configuration class
-         * itself, and the breaker comes through an {@link ObjectProvider} so it is only built when a store bean
-         * actually appears (asking for it directly would build it too early).
+         * itself, and the breaker is looked up by its name ({@value #BREAKER_BEAN_NAME}) only when a store bean
+         * actually appears (asking for it directly would build it too early). The lookup is by name, never by type:
+         * an application that has breakers of its own must neither fail to start nor have the store wrapped in one
+         * of them.
          *
-         * @param breaker the breaker, fetched lazily
+         * @param beanFactory where the breaker is fetched from, lazily
          * @return the post-processor
          */
         @Bean
-        static BeanPostProcessor idempotencyStoreBreakerPostProcessor(ObjectProvider<CircuitBreaker> breaker) {
+        static BeanPostProcessor idempotencyStoreBreakerPostProcessor(BeanFactory beanFactory) {
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
                     if (bean instanceof IdempotencyStore store && !(bean instanceof CircuitBreakerIdempotencyStore)) {
-                        return new CircuitBreakerIdempotencyStore(store, breaker.getObject());
+                        return new CircuitBreakerIdempotencyStore(store, beanFactory.getBean(BREAKER_BEAN_NAME, CircuitBreaker.class));
                     }
                     return bean;
                 }

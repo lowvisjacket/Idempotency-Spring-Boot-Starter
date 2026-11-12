@@ -116,6 +116,8 @@ class IdempotencyInterceptorTests {
             IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getContentType(),
                     r.getHeaders(), r.getBody(), r.getHttpStatus(), r.getTtl());
             c.setStatus(r.getStatus());
+            c.setOwner(r.getOwner());
+            c.setReplayable(r.isReplayable());
             return c;
         }
 
@@ -779,10 +781,11 @@ class IdempotencyInterceptorTests {
     }
 
     @Test
-    void aPrincipalWithABlankNameIsTreatedAsAnonymous() throws Exception {
+    void aPrincipalWithABlankNameIsAnIdentifiedCallerAndNeverSharesTheAnonymousNamespace() throws Exception {
         assertTrue(run(asUser(validPost("k1"), "  "), new MockHttpServletResponse(), create()));
 
-        assertEquals(storedKey(null, "k1"), store.claimed.get(0).getKey());
+        assertEquals(storedKey("  ", "k1"), store.claimed.get(0).getKey());
+        assertNotEquals(storedKey(null, "k1"), store.claimed.get(0).getKey());
     }
 
     @Test

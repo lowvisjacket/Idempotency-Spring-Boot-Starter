@@ -10,7 +10,6 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * Chooses and creates the {@link IdempotencyStore}.
@@ -48,8 +47,8 @@ public class IdempotencyStoreAutoConfiguration {
          */
         @Bean
         @ConditionalOnMissingBean(IdempotencyStore.class)
-        RedisIdempotencyStore redisIdempotencyStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
-            return new RedisIdempotencyStore(redisTemplate, objectMapper);
+        RedisIdempotencyStore redisIdempotencyStore(StringRedisTemplate redisTemplate) {
+            return new RedisIdempotencyStore(redisTemplate);
         }
     }
 }

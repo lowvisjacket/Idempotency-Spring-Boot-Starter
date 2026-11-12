@@ -172,7 +172,7 @@ class ResponseCaptureFilterTests {
     }
 
     @ParameterizedTest(name = "status {0} is saved for replay")
-    @ValueSource(ints = {200, 201, 202, 204, 301, 302, 304, 400, 401, 403, 404, 409, 418, 422, 429, 499})
+    @ValueSource(ints = {200, 201, 202, 204, 301, 302, 304, 400, 404, 409, 418, 422, 499})
     void everyStatusBelow500IsSaved(int status) throws Exception {
         MockHttpServletResponse real = serve(status, "body-" + status);
 
@@ -182,6 +182,51 @@ class ResponseCaptureFilterTests {
         assertEquals(0, store.deletes.get());
         assertEquals(status, real.getStatus());
         assertEquals("body-" + status, real.getContentAsString());
+    }
+
+    @ParameterizedTest(name = "status {0} is not saved")
+    @ValueSource(ints = {401, 403, 407, 408, 425, 429})
+    void refusalsAndThrottlingAreNeverFrozenForTheWholeTtl(int status) throws Exception {
+        MockHttpServletResponse real = serve(status, "no-" + status);
+
+        assertNull(stored(), "the retry must be judged afresh");
+        assertEquals(status, real.getStatus());
+        assertEquals("no-" + status, real.getContentAsString());
+    }
+
+    @Test
+    void withTheBlockPolicyAnOversizedResponseLeavesAFinishedRecordInsteadOfNone() throws Exception {
+        ResponseCaptureFilter blocking = new ResponseCaptureFilter(store, 10, true, false);
+        seed();
+        MockHttpServletResponse real = new MockHttpServletResponse();
+
+        blocking.doFilter(new MockHttpServletRequest("POST", "/orders"), real, (request, response) -> {
+            interceptorWins(request, response, claim);
+            ((HttpServletResponse) response).setStatus(201);
+            response.getOutputStream().write(utf8("this body is longer than ten bytes"));
+        });
+
+        assertEquals("this body is longer than ten bytes", real.getContentAsString());
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertFalse(stored().isReplayable());
+        assertEquals(201, stored().getHttpStatus());
+        assertNull(stored().getBody());
+    }
+
+    @Test
+    void withTheReplayPolicyAServerErrorIsSavedLikeAnyOtherResponse() throws Exception {
+        ResponseCaptureFilter replaying = new ResponseCaptureFilter(store, 1000, false, true);
+        seed();
+
+        replaying.doFilter(new MockHttpServletRequest("POST", "/orders"), new MockHttpServletResponse(), (request, response) -> {
+            interceptorWins(request, response, claim);
+            ((HttpServletResponse) response).setStatus(503);
+            response.getOutputStream().write(utf8("down"));
+        });
+
+        assertEquals(Status.COMPLETED, stored().getStatus());
+        assertEquals(503, stored().getHttpStatus());
+        assertEquals("down", stored().getBody());
     }
 
     @Test
@@ -615,7 +660,7 @@ class ResponseCaptureFilterTests {
     }
 
     @Test
-    void whenAsyncProcessingStartedNothingIsDecidedYet() throws Exception {
+    void whenAsyncProcessingStartedTheClaimIsReleasedInsteadOfLockingTheKeyForTheWholeTtl() throws Exception {
         seed();
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/orders");
         MockHttpServletResponse real = new MockHttpServletResponse();
@@ -626,8 +671,7 @@ class ResponseCaptureFilterTests {
             response.getOutputStream().write(utf8("later"));
         });
 
-        assertEquals(0, store.totalCalls(), "the real answer is not known yet");
-        assertEquals(Status.PENDING, stored().getStatus());
+        assertNull(stored(), "a record nobody will ever settle must not stay PENDING");
         assertEquals("later", real.getContentAsString());
     }
 

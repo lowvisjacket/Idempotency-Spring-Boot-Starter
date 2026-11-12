@@ -1,5 +1,9 @@
 # Idempotency Spring Boot Starter
 
+[![CI](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml/badge.svg)](https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter/actions/workflows/ci.yml)
+![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)
+[![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.x-6DB33F.svg)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 Make `POST`, `PUT` and `PATCH` endpoints safe to retry. Put `@Idempotent` on a controller method, and a repeated
@@ -20,9 +24,6 @@ Idempotency-Key: abc123             Idempotency-Key: abc123             Idempote
   -> 201 Created (code ran)           -> 201 Created (replayed)           -> 201 Created (replayed)
                                          Idempotency-Replayed: true          Idempotency-Replayed: true
 ```
-
-> **Status: in development, not yet on Maven Central.** The behaviour below is implemented and tested; the
-> coordinates in the quick start are what the first release will use.
 
 ## Requirements
 
@@ -80,6 +81,8 @@ A key is 1 to 255 printable ASCII characters with no spaces. Endpoints without t
 | Same key, but a **different** request | `422`. The saved response is never shown. |
 | Key missing, repeated, or not acceptable | `400`. |
 | Request body larger than 2 KB | `413`. |
+| Caller cannot be identified, with `idempotency.anonymous-access=reject` | `401`. |
+| Same key, but the first request finished with a response that could not be saved, with `idempotency.on-unreplayable-response=block` | `409`. The controller does not run again. |
 | The store cannot be reached | `503` with `Retry-After: 5`. The request is refused rather than run unprotected. |
 
 Refusals are `application/problem+json` ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) with a stable `type`:
@@ -92,33 +95,47 @@ Refusals are `application/problem+json` ([RFC 9457](https://www.rfc-editor.org/r
 }
 ```
 
-The types are `urn:idempotency:invalid-key`, `request-in-progress`, `body-too-large`, `key-reused` and
-`store-unavailable`. Error text never repeats the key or the store's own error message.
+The types are `urn:idempotency:invalid-key`, `request-in-progress`, `body-too-large`, `key-reused`,
+`response-not-replayable`, `caller-not-identified` and `store-unavailable`. Error text never repeats the key or the store's own error message.
 
 ### What counts as "the same request"
 
-The method, path, query string and body. Text bodies are Unicode-normalised, so the same text typed two ways matches;
-binary bodies are compared byte for byte. Headers are not part of it.
+The method, path, query string, media type (without parameters such as `charset`) and body. Text bodies are
+Unicode-normalised, so the same text typed two ways matches; binary bodies are compared byte for byte. Form posts
+(`application/x-www-form-urlencoded`) are compared by their fields, whatever order they come in. Other headers are not
+part of it.
 
-Keys are also **scoped to the caller**: the authenticated user's name (hashed, never stored as is) is part of the stored
-key, so two users who happen to send the same key never see each other's responses. Unauthenticated requests share one
-anonymous space.
+Keys are also **scoped to the caller**: who the caller is (hashed, never stored as is) is part of the stored key, so two
+users who happen to send the same key never see each other's responses. The caller is the authenticated principal's
+name; failing that, the `Authorization` header; plus any headers listed in `idempotency.caller-headers` (a tenant id,
+say). A request with none of these is anonymous. By default all anonymous requests share one space, so anyone who knows
+a key can read its saved response: set `idempotency.anonymous-access=reject` to answer them with `401` instead.
+
+Redis keys can also carry a prefix (`idempotency.namespace`, so several applications can share a Redis) and be derived
+with a secret (`idempotency.key-secret`, so a Redis reader cannot recompute them from guessed user names).
 
 ### What is saved and replayed
 
 The status, the body, the `Content-Type`, and these headers: `Location`, `Content-Location`, `ETag` and
-`Content-Language`. Nothing else is kept. In particular `Set-Cookie` and other per-response or private headers are
+`Content-Language`, `Cache-Control`, `Expires`, `Pragma` and `Vary`. Nothing else is kept. In particular `Set-Cookie` and other per-response or private headers are
 never written to the store and never replayed.
 
 ### When a response is *not* saved
 
 The key is released instead, so a retry runs the controller again. The client still receives the response in full.
 
-- the status is `5xx`, or the controller threw an exception (a failure should be retried, not replayed);
+- the status is `5xx`, or the controller threw an exception (a failure should be retried, not replayed; set
+  `idempotency.on-server-error=replay` to save `5xx` responses instead);
+- the status is `401`, `403`, `407`, `408`, `425` or `429` (the request was refused or not processed, and a retry may
+  well succeed);
 - the body is larger than `idempotency.max-response-body-bytes` (64 KB by default);
 - the body is not UTF-8 text (for example a PDF or an image).
 
-`3xx` and `4xx` responses are saved and replayed like any other.
+Other `3xx` and `4xx` responses are saved and replayed like any other.
+
+If the controller already did its work and then returned a response that cannot be saved (too large, binary), releasing
+the key means a retry does the work again. Where that is worse than a refusal, set
+`idempotency.on-unreplayable-response=block`: a retry then gets `409 response-not-replayable`.
 
 ## Configuration
 
@@ -127,6 +144,19 @@ All settings are optional.
 ```properties
 idempotency.enabled=true
 idempotency.max-response-body-bytes=65536
+
+# Prefix for Redis keys: letters, digits, . _ - (default: none)
+idempotency.namespace=orders
+# Derive keys with HMAC-SHA256 instead of plain SHA-256
+idempotency.key-secret=change-me
+# Extra headers that identify the caller
+idempotency.caller-headers=X-Tenant-Id
+# shared | reject
+idempotency.anonymous-access=shared
+# release | block
+idempotency.on-unreplayable-response=release
+# release | replay
+idempotency.on-server-error=release
 
 idempotency.circuit-breaker.enabled=true
 idempotency.circuit-breaker.sliding-window-size=20
@@ -161,7 +191,11 @@ Every piece is a bean that backs off if you define your own:
 
 - an `IdempotencyStore` bean replaces the Redis store (it is still wrapped by the breaker);
 - a `CircuitBreaker` bean named `idempotencyCircuitBreaker` replaces the default breaker;
+- a `CallerScope` bean replaces how the caller is identified;
 - the interceptor, fingerprint calculator and problem writer can be replaced the same way.
+
+The interceptor runs after your own interceptors, so authentication and similar checks happen before a saved response
+is served. If no `IdempotencyStore` bean exists, an application with `@Idempotent` endpoints refuses to start.
 
 ## Limitations
 
@@ -171,12 +205,18 @@ Please read these before relying on the library.
   `CompletionStage`, a reactive type, an emitter or `StreamingResponseBody` stops the application with a message naming
   the method. Its answer does not exist when the method returns, so it cannot be saved.
 - **Request bodies over 2 KB are rejected** (`413`) on `@Idempotent` endpoints, because the body is read into memory to
-  fingerprint it.
+  fingerprint it. Endpoints without the annotation receive large and chunked bodies unchanged.
 - **Large and binary responses are not replayed.** They are delivered normally, but a retry runs the code again (see
   above).
 - **A crash mid-request** leaves the key marked as running until its TTL ends, so retries get `409` until then. Use a
   TTL that matches how long you can live with that.
 - **Only `POST`, `PUT` and `PATCH` bodies are fingerprinted.** Other methods are fingerprinted on method, path and query.
+- **Functional endpoints** (`RouterFunction`) are not covered; only annotated controllers are.
+- **Method security does not run again** when a response is replayed. Put access checks in a filter or interceptor.
+- **If a record's TTL ends while the first request is still running,** a retry can run the handler a second time. Choose
+  a TTL much longer than your slowest request. (A late finisher can no longer overwrite or delete the newer request's
+  record.)
+- **There is no limit on how many keys one caller can create.** Rate-limit at the edge.
 - Redis is the only store so far.
 
 ## Building

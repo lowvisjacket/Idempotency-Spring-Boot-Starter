@@ -1,12 +1,10 @@
 package io.github.lowvisjacket.idempotency.fingerprint;
 
 import io.github.lowvisjacket.idempotency.config.IdempotencyDefaults;
-import io.github.lowvisjacket.idempotency.exception.FingerprintException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -27,8 +25,9 @@ import java.util.Set;
  *       {@code @Idempotent}, decides whether that is an error. This filter runs before Spring has chosen a
  *       controller, so it must not reject requests for endpoints that are not idempotent.</li>
  *   <li><b>Body found to be larger than the cap while reading</b> (no declared length, for example a chunked
- *       upload) - answered with {@code 413 Content Too Large}. The original stream has already been consumed, so
- *       the request cannot be passed on.</li>
+ *       upload) - flagged exactly like a declared oversize body, and passed on in a wrapper that serves the bytes
+ *       already read followed by the rest of the original stream. At most cap + 1 bytes are ever held in memory,
+ *       and an endpoint that is not {@code @Idempotent} receives the complete body unchanged.</li>
  *   <li><b>Otherwise</b> - wrapped, and the wrapper is passed down the chain.</li>
  * </ul>
  *
@@ -45,11 +44,11 @@ public class RequestFilter extends OncePerRequestFilter {
     /**
      * Applies the rules described on the class to a single request.
      *
-     * <p>Exactly one outcome happens per request: the original request is passed on, a {@link RequestWrapper}
-     * is passed on, or a 413 response is written and the chain is not called.
+     * <p>Exactly one outcome happens per request: the original request is passed on, or a {@link RequestWrapper}
+     * is passed on. The filter never writes a response itself.
      *
      * @param request     the incoming request
-     * @param response    the response, used only to report a body that is too large
+     * @param response    the response, passed on unchanged
      * @param filterChain the rest of the filter chain
      * @throws ServletException if a later filter or servlet fails
      * @throws IOException      if reading the request body fails, or a later filter or servlet fails
@@ -67,14 +66,10 @@ public class RequestFilter extends OncePerRequestFilter {
             return;
         }
 
-        RequestWrapper wrapper;
-        try {
-            wrapper = new RequestWrapper(request);
-        } catch (FingerprintException exception) {
-            response.sendError(HttpStatus.CONTENT_TOO_LARGE.value(), exception.getMessage());
-            return;
+        RequestWrapper wrapper = RequestWrapper.capture(request);
+        if (wrapper.exceedsCap()) {
+            wrapper.setAttribute(IdempotencyDefaults.BODY_EXCEEDS_CAP_ATTRIBUTE, Boolean.TRUE);
         }
-
         filterChain.doFilter(wrapper, response);
     }
 }

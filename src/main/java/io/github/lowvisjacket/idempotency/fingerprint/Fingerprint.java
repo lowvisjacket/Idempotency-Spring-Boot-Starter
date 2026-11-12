@@ -27,8 +27,25 @@ public class Fingerprint {
         addPart(digest, text(request.getRequestURI()));
         addPart(digest, text(request.getQueryString() == null ? "" : request.getQueryString()));
         addPart(digest, normalizeBody(request.getSavedBody()));
+        // The same bytes mean different things under different media types (JSON vs a form vs plain text), so the media
+        // type (without parameters such as charset, which retries may spell differently) is part of the request.
+        String mediaType = mediaType(request.getContentType());
+        if (!mediaType.isEmpty()) {
+            addPart(digest, text(mediaType));
+        }
+        // Form fields travel in the parameter map, not in the body stream. Added only when present, so every other
+        // request keeps the fingerprint it always had.
+        if (!request.getFormParameters().isEmpty()) {
+            addPart(digest, text(request.getFormParameters()));
+        }
 
         return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static String mediaType(String contentType) {
+        if (contentType == null) return "";
+        int semicolon = contentType.indexOf(';');
+        return (semicolon < 0 ? contentType : contentType.substring(0, semicolon)).trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     private void addPart(MessageDigest digest, byte[] part) {

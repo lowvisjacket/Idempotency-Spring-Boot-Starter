@@ -4,6 +4,10 @@ on:
   push:
     branches: ['**']
 
+# The workflow only needs to read the repository; nothing it runs may write to it.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

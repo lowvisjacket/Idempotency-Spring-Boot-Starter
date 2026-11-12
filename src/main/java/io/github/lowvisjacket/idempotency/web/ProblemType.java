@@ -17,11 +17,17 @@ public enum ProblemType {
     /** A request with this key is still being processed. */
     REQUEST_IN_PROGRESS(409, "urn:idempotency:request-in-progress", "Request already in progress"),
 
+    /** The endpoint only serves identified callers and this request has no identity. */
+    CALLER_NOT_IDENTIFIED(401, "urn:idempotency:caller-not-identified", "Caller not identified"),
+
     /** The request body is larger than the library will buffer. */
     BODY_TOO_LARGE(413, "urn:idempotency:body-too-large", "Request body too large"),
 
     /** The key was already used for a different request. */
     KEY_REUSED(422, "urn:idempotency:key-reused", "Idempotency key reused with a different request"),
+
+    /** The request finished, but its response was too large or not text, so it cannot be repeated; it is not run again. */
+    RESPONSE_NOT_REPLAYABLE(409, "urn:idempotency:response-not-replayable", "Original response cannot be replayed"),
 
     /** The store that tracks keys cannot be reached, so the request is refused rather than run unprotected. */
     STORE_UNAVAILABLE(503, "urn:idempotency:store-unavailable", "Idempotency store unavailable");

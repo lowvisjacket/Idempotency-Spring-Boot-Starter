@@ -23,6 +23,21 @@ public class IdempotencyRecord {
     @JsonIgnore
     private String key;
     private String fingerprint;
+
+    /**
+     * A random token that identifies the request that claimed the key. Only that request may complete or delete the
+     * record. Without it, a request whose record expired mid-flight would overwrite (or delete) the record of the
+     * next request that claimed the same key, and a third request could then run as well.
+     * May be null for a record written by a version that had no token.
+     */
+    private String owner;
+
+    /**
+     * False when the request ran to completion but its response could not be kept (too large, not UTF-8 text). The
+     * record then only says "this key was used and finished with {@code httpStatus}", and a retry is refused rather
+     * than run a second time. Records written before this field existed read as replayable.
+     */
+    private boolean replayable = true;
     private Status status = Status.PENDING;
     /** The response's {@code Content-Type} exactly as sent (including any charset), or null if it had none. */
     private String contentType;

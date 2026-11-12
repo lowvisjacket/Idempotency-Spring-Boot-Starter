@@ -78,9 +78,9 @@ class RequestFilterTests {
         assertEquals(true, downstream.getAttribute(IdempotencyDefaults.BODY_EXCEEDS_CAP_ATTRIBUTE));
     }
 
-    @Test
-    void anOversizedBodyWithNoDeclaredLengthGetsA413AndTheChainIsNotCalled() throws Exception {
-        MockHttpServletRequest chunked = new MockHttpServletRequest("POST", "/payments") {
+    /** A POST whose length is not declared (as with Transfer-Encoding: chunked). */
+    private static MockHttpServletRequest chunked(byte[] content) {
+        MockHttpServletRequest chunked = new MockHttpServletRequest("POST", "/upload") {
             @Override
             public long getContentLengthLong() {
                 return -1;
@@ -91,14 +91,84 @@ class RequestFilterTests {
                 return -1;
             }
         };
-        chunked.setContent("x".repeat(IdempotencyDefaults.MAX_BODY_SIZE_BYTES + 1).getBytes(StandardCharsets.UTF_8));
+        chunked.setContent(content);
+        return chunked;
+    }
+
+    @Test
+    void anOversizedBodyWithNoDeclaredLengthIsFlaggedAndStillReachesTheControllerInFull() throws Exception {
+        byte[] content = "x".repeat(IdempotencyDefaults.MAX_BODY_SIZE_BYTES * 5 + 7).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest chunked = chunked(content);
         MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
 
-        filter.doFilter(chunked, response, chain);
+        HttpServletRequest downstream = runFilter(chunked, response);
 
-        assertEquals(413, response.getStatus());
-        assertNull(chain.getRequest(), "the rest of the app must not run");
+        assertNotEquals(413, response.getStatus(), "a plain endpoint must not be rejected by the starter");
+        assertNotNull(downstream, "the rest of the app must run");
+        assertEquals(true, downstream.getAttribute(IdempotencyDefaults.BODY_EXCEEDS_CAP_ATTRIBUTE));
+        assertArrayEquals(content, downstream.getInputStream().readAllBytes());
+    }
+
+    @Test
+    void aBodyWithNoDeclaredLengthIsNeverBufferedBeyondTheCap() throws Exception {
+        // F01: the filter used to call readAllBytes(), holding an entire chunked upload in the heap.
+        long total = 50L * 1024 * 1024;
+        long[] produced = {0};
+        jakarta.servlet.ServletInputStream endless = new jakarta.servlet.ServletInputStream() {
+            @Override
+            public int read() {
+                return produced[0] < total ? (int) (produced[0]++ & 0x7f) : -1;
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) {
+                if (produced[0] >= total) return -1;
+                int n = (int) Math.min(len, total - produced[0]);
+                produced[0] += n;
+                return n;
+            }
+
+            @Override
+            public boolean isFinished() {
+                return produced[0] >= total;
+            }
+
+            @Override
+            public boolean isReady() {
+                return true;
+            }
+
+            @Override
+            public void setReadListener(jakarta.servlet.ReadListener listener) {
+            }
+        };
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/upload") {
+            @Override
+            public long getContentLengthLong() {
+                return -1;
+            }
+
+            @Override
+            public jakarta.servlet.ServletInputStream getInputStream() {
+                return endless;
+            }
+        };
+
+        HttpServletRequest downstream = runFilter(request, new MockHttpServletResponse());
+
+        assertTrue(produced[0] <= IdempotencyDefaults.MAX_BODY_SIZE_BYTES + 8192,
+                "the filter read " + produced[0] + " bytes before the controller asked for any");
+        assertEquals(true, downstream.getAttribute(IdempotencyDefaults.BODY_EXCEEDS_CAP_ATTRIBUTE));
+    }
+
+    @Test
+    void aMethodNotBufferedByTheFilterKeepsItsBodyWhenTheInterceptorFingerprintsIt() throws Exception {
+        MockHttpServletRequest delete = request("DELETE", "{\"reason\":\"x\"}");
+
+        RequestWrapper wrapper = RequestWrapper.withoutBody(delete);
+
+        assertEquals(0, wrapper.getSavedBody().length);
+        assertEquals("{\"reason\":\"x\"}", new String(delete.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
     }
 
     @Test

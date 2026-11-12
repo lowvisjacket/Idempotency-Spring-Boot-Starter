@@ -91,11 +91,13 @@ class StoredKeysTests {
         assertEquals(ANON_PREFIX + "order-1", StoredKeys.build(null, "order-1"));
     }
 
-    @ParameterizedTest(name = "blank caller #{index} is anonymous")
-    @NullAndEmptySource
-    @ValueSource(strings = {" ", "   ", "\t", "\n", "\r\n", " \t \n "})
-    void anEmptyOrBlankCallerIsAnonymous(String blank) throws Exception {
-        assertEquals(ANON_PREFIX + "k", StoredKeys.build(blank, "k"));
+    @ParameterizedTest(name = "blank caller #{index} is an identified caller, not the shared anonymous one")
+    @ValueSource(strings = {"", " ", "   ", "\t", "\n", "\r\n", " \t \n "})
+    void anEmptyOrBlankCallerIsNotAnonymous(String blank) throws Exception {
+        String result = StoredKeys.build(blank, "k");
+
+        assertNotEquals(ANON_PREFIX + "k", result);
+        assertTrue(result.startsWith(USER_PREFIX), result);
     }
 
     @Test
@@ -176,11 +178,33 @@ class StoredKeysTests {
     }
 
     @Test
-    void composedAndDecomposedFormsOfTheSameNameGiveTheSameKey() throws Exception {
-        String composed = "José";
-        String decomposed = "José";
+    void composedAndDecomposedFormsOfTheSameNameAreDifferentCallers() throws Exception {
+        String composed = "Jos\u00e9";
+        String decomposed = "Jose\u0301";
 
-        assertEquals(StoredKeys.build(composed, "k"), StoredKeys.build(decomposed, "k"));
+        assertNotEquals(StoredKeys.build(composed, "k"), StoredKeys.build(decomposed, "k"));
+    }
+
+    @Test
+    void aNamespaceSeparatesApplicationsThatShareAStore() throws Exception {
+        assertNotEquals(StoredKeys.build("orders", null, "alice", "k"), StoredKeys.build("billing", null, "alice", "k"));
+        assertEquals("idempotency:v1:orders:anonymous:k", StoredKeys.build("orders", null, null, "k"));
+    }
+
+    @Test
+    void aSecretMakesTheCallerHashUnguessableFromADictionary() throws Exception {
+        String plain = StoredKeys.build("alice@example.com", "k");
+        String keyed = StoredKeys.build(null, "s3cret", "alice@example.com", "k");
+
+        assertNotEquals(plain, keyed);
+        assertNotEquals(keyed, StoredKeys.build(null, "other", "alice@example.com", "k"));
+        assertTrue(keyed.matches("idempotency:v1:user:[0-9a-f]{64}:k"), keyed);
+    }
+
+    @Test
+    void aMalformedNamespaceIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> StoredKeys.build("a:b", null, "alice", "k"));
+        assertThrows(IllegalArgumentException.class, () -> StoredKeys.build("x".repeat(65), null, "alice", "k"));
     }
 
     @Test

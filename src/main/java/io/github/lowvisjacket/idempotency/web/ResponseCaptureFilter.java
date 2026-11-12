@@ -36,13 +36,16 @@ import java.util.*;
  *   <li><b>No claim.</b> If the request has no {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#CLAIM_ATTRIBUTE}
  *       (or the attribute is not an {@code IdempotencyRecord}), this request claimed nothing: release the response
  *       and make no store calls at all.</li>
- *   <li><b>Async.</b> If {@code request.isAsyncStarted()}, the real answer comes later, so do nothing now: release
- *       the response and leave the record alone. (Async controllers are not supported yet; the record stays
- *       {@code PENDING} until its TTL ends.)</li>
+ *   <li><b>Async.</b> If {@code request.isAsyncStarted()}, the real answer comes later and cannot be saved by this
+ *       filter. The startup check refuses async return types, so this is a handler it could not recognise; the
+ *       record is deleted (a warning is logged) instead of staying {@code PENDING} and locking the key out for the
+ *       whole TTL.</li>
  *   <li><b>Decide.</b> The record is <b>deleted</b> so the client can retry when the response should not be
  *       replayed, and <b>completed</b> otherwise:
  *     <ul>
  *       <li>status 500 or above: delete (a failure is retried, not replayed);</li>
+ *       <li>status 401, 403, 407, 408, 425 or 429 ({@link IdempotencyDefaults#NEVER_SAVED_STATUSES}): delete, so a
+ *           caller who was refused or throttled is not told the same thing for the whole TTL;</li>
  *       <li>the body went over {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#MAX_RESPONSE_SIZE_BYTES}
  *           (the response is still sent in full): delete, since it cannot be saved without cutting it;</li>
  *       <li>the body is not valid UTF-8 (the record stores text): delete;</li>
@@ -72,6 +75,10 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
 
     private final IdempotencyStore store;
     private final int maxResponseBytes;
+    /** True: a finished response that cannot be saved leaves a "finished, not replayable" record instead of none. */
+    private final boolean blockUnreplayable;
+    /** True: a 5xx response is saved and replayed like any other. */
+    private final boolean replayServerErrors;
 
     /**
      * Uses {@link io.github.lowvisjacket.idempotency.config.IdempotencyDefaults#MAX_RESPONSE_SIZE_BYTES}.
@@ -90,6 +97,20 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
      * @throws IllegalArgumentException if {@code maxResponseBytes} is negative
      */
     public ResponseCaptureFilter(IdempotencyStore store, int maxResponseBytes) {
+        this(store, maxResponseBytes, false, false);
+    }
+
+    /**
+     * @param blockUnreplayable  keep a non-replayable record when the response is too large or not text, so a retry
+     *                           is refused instead of running the handler again
+     * @param replayServerErrors save and replay 5xx responses instead of releasing the key
+     * @throws NullPointerException     if {@code store} is null
+     * @throws IllegalArgumentException if {@code maxResponseBytes} is negative
+     */
+    public ResponseCaptureFilter(IdempotencyStore store, int maxResponseBytes, boolean blockUnreplayable,
+                                 boolean replayServerErrors) {
+        this.blockUnreplayable = blockUnreplayable;
+        this.replayServerErrors = replayServerErrors;
         this.store = Objects.requireNonNull(store, "store");
         if (maxResponseBytes < 0) {
             throw new IllegalArgumentException("maxResponseBytes must not be negative");
@@ -119,7 +140,17 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         }
 
         IdempotencyRecord claim = claimOf(request);
-        if (claim == null || request.isAsyncStarted()) {
+        if (claim != null && request.isAsyncStarted()) {
+            // A handler the startup check could not recognise (it is declared to return Object, or starts async by
+            // itself) completes later, outside this filter, so the response can never be saved. Leaving the record
+            // PENDING would lock the key out for the whole TTL; release it instead and say so.
+            log.warn("An @Idempotent handler started asynchronous processing, which is not supported; the idempotency "
+                    + "key is released and this endpoint is not protected against retries");
+            deleteQuietly(claim);
+            wrapper.release();
+            return;
+        }
+        if (claim == null) {
             wrapper.release();
             return;
         }
@@ -134,26 +165,30 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
     /** Completes the claim when the response can be replayed, deletes it otherwise. Never throws for store errors. */
     private void settle(IdempotencyRecord claim, CapturingResponse wrapper) {
         int status = wrapper.getStatus();
-        boolean saveable = status < 500 && !wrapper.isOverflowed() && wrapper.isCapturing();
+        boolean released = IdempotencyDefaults.NEVER_SAVED_STATUSES.contains(status)
+                || (status >= 500 && !replayServerErrors);
 
         String contentType = wrapper.getContentType();
         String body = null;
-        if (saveable) {
+        boolean replayable = !released && !wrapper.isOverflowed() && wrapper.isCapturing();
+        if (replayable) {
             byte[] bytes = wrapper.getCapturedBody();
             if (bytes.length > 0) {
                 body = decodeUtf8(bytes);
-                saveable = body != null && replayableAs(contentType, bytes);
+                replayable = body != null && replayableAs(contentType, bytes);
             }
         }
 
         try {
-            if (saveable) {
-                IdempotencyRecord done = new IdempotencyRecord(
-                        claim.getKey(), claim.getFingerprint(), contentType, savedHeaders(wrapper), body, status, claim.getTtl());
+            if (!released && (replayable || blockUnreplayable)) {
+                IdempotencyRecord done = new IdempotencyRecord(claim.getKey(), claim.getFingerprint(), contentType,
+                        savedHeaders(wrapper), replayable ? body : null, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
+                done.setOwner(claim.getOwner());
+                done.setReplayable(replayable);
                 store.complete(done);
             } else {
-                store.delete(claim.getKey());
+                release(claim);
             }
         } catch (RuntimeException e) {
             log.warn("Could not settle idempotency record; it stays until its TTL ends", e);
@@ -195,9 +230,18 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         return linkedHashMap;
     }
 
+    /** Removes the claimed record, but only if this request still owns it. */
+    private void release(IdempotencyRecord claim) {
+        if (claim.getOwner() == null) {
+            store.delete(claim.getKey());
+        } else {
+            store.delete(claim.getKey(), claim.getOwner());
+        }
+    }
+
     private void deleteQuietly(IdempotencyRecord claim) {
         try {
-            store.delete(claim.getKey());
+            release(claim);
         } catch (RuntimeException e) {
             log.warn("Could not delete idempotency record after a failed request", e);
         }

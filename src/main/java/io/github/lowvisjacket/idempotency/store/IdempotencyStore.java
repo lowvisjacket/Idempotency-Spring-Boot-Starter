@@ -39,6 +39,21 @@ public interface IdempotencyStore {
      */
     boolean delete(String key);
 
+    /**
+     * Removes the record only if it was claimed by the request holding {@code owner}. A request that no longer owns
+     * the key (its record expired and another request claimed it) must not remove the new owner's record.
+     *
+     * <p>The default ignores the owner and calls {@link #delete(String)}, so a store written before owners existed
+     * keeps working; a store that can compare and delete atomically should override it.
+     *
+     * @param key   the stored key
+     * @param owner the owner token from the claimed record
+     * @return true if a record was removed
+     */
+    default boolean delete(String key, String owner) {
+        return delete(key);
+    }
+
     /** Whether a record is currently stored under the key. */
     boolean exists(String key);
 

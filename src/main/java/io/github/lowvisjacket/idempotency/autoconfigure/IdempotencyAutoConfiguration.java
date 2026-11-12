@@ -4,7 +4,8 @@ import io.github.lowvisjacket.idempotency.config.IdempotencyDefaults;
 import io.github.lowvisjacket.idempotency.fingerprint.Fingerprint;
 import io.github.lowvisjacket.idempotency.fingerprint.RequestFilter;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
-import io.github.lowvisjacket.idempotency.web.AsyncHandlerGuard;
+import io.github.lowvisjacket.idempotency.web.IdempotentHandlerValidator;
+import io.github.lowvisjacket.idempotency.web.CallerScope;
 import io.github.lowvisjacket.idempotency.web.IdempotencyInterceptor;
 import io.github.lowvisjacket.idempotency.web.ProblemResponseWriter;
 import io.github.lowvisjacket.idempotency.web.ResponseCaptureFilter;
@@ -19,6 +20,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -85,9 +87,16 @@ public class IdempotencyAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    public CallerScope callerScope(IdempotencyProperties properties) {
+        return new CallerScope(properties.getNamespace(), properties.getKeySecret(), properties.getCallerHeaders(),
+                properties.getAnonymousAccess() == IdempotencyProperties.AnonymousAccess.REJECT);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public IdempotencyInterceptor idempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint,
-                                                         ProblemResponseWriter writer) {
-        return new IdempotencyInterceptor(store, fingerprint, writer);
+                                                         ProblemResponseWriter writer, CallerScope callerScope) {
+        return new IdempotencyInterceptor(store, fingerprint, writer, callerScope);
     }
 
     /**
@@ -110,7 +119,9 @@ public class IdempotencyAutoConfiguration {
     @Bean
     public FilterRegistrationBean<ResponseCaptureFilter> responseCaptureFilterRegistration(
             IdempotencyStore store, IdempotencyProperties properties) {
-        FilterRegistrationBean<ResponseCaptureFilter> filterRegistrationBean = new FilterRegistrationBean<ResponseCaptureFilter>(new ResponseCaptureFilter(store, properties.getMaxResponseBodyBytes()));
+        FilterRegistrationBean<ResponseCaptureFilter> filterRegistrationBean = new FilterRegistrationBean<ResponseCaptureFilter>(new ResponseCaptureFilter(store, properties.getMaxResponseBodyBytes(),
+                properties.getOnUnreplayableResponse() == IdempotencyProperties.UnreplayableResponsePolicy.BLOCK,
+                properties.getOnServerError() == IdempotencyProperties.ServerErrorPolicy.REPLAY));
         filterRegistrationBean.setOrder(IdempotencyDefaults.RESPONSE_FILTER_ORDER);
         return filterRegistrationBean;
     }
@@ -126,7 +137,10 @@ public class IdempotencyAutoConfiguration {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(interceptor).addPathPatterns("/**");
+                // Last of all, so the application's own interceptors (authentication, authorization, rate limiting, tenant
+                // checks) have run before a saved response can be served. Interceptors registered without an order
+                // run at order 0 and so come first.
+                registry.addInterceptor(interceptor).addPathPatterns("/**").order(Ordered.LOWEST_PRECEDENCE);
             }
         };
     }
@@ -142,6 +156,6 @@ public class IdempotencyAutoConfiguration {
     @Bean
     public SmartInitializingSingleton idempotencyAsyncHandlerCheck(ObjectProvider<RequestMappingHandlerMapping> mappings) {
         return () -> mappings.orderedStream()
-                .forEach(mapping -> AsyncHandlerGuard.validate(mapping.getHandlerMethods().values()));
+                .forEach(mapping -> IdempotentHandlerValidator.validate(mapping.getHandlerMethods().values()));
     }
 }

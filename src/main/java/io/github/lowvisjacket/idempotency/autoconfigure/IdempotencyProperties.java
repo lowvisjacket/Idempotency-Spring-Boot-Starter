@@ -12,6 +12,12 @@ import java.time.Duration;
  * <pre>
  * idempotency.enabled=true
  * idempotency.max-response-body-bytes=65536
+ * idempotency.namespace=orders-service
+ * idempotency.key-secret=change-me
+ * idempotency.caller-headers=X-Tenant-Id
+ * idempotency.anonymous-access=shared             (or reject)
+ * idempotency.on-unreplayable-response=release   (or block)
+ * idempotency.on-server-error=release            (or replay)
  * idempotency.circuit-breaker.enabled=true
  * idempotency.circuit-breaker.sliding-window-size=20
  * idempotency.circuit-breaker.minimum-number-of-calls=10
@@ -39,6 +45,96 @@ public class IdempotencyProperties {
 
     /** Integer representing the max byte size of the response body **/
     private int maxResponseBodyBytes = IdempotencyDefaults.MAX_RESPONSE_SIZE_BYTES;
+
+    /** Separates applications that share one Redis. Letters, digits, '.', '_' and '-' only. Empty for none. */
+    private String namespace = "";
+
+    /** Secret for the HMAC that hides user names in stored keys. Empty: a plain SHA-256 of the name is used. */
+    private String keySecret = "";
+
+    /** Extra request headers (such as X-Tenant-Id) whose values are part of the caller's identity. */
+    private java.util.List<String> callerHeaders = new java.util.ArrayList<>();
+
+    /** What to do with requests that carry no identity at all. */
+    private AnonymousAccess anonymousAccess = AnonymousAccess.SHARED;
+
+    /**
+     * {@code SHARED} (the default): all unidentified callers share one namespace, so anyone who knows a key can read
+     * its saved response. {@code REJECT}: an unidentified caller on an {@code @Idempotent} endpoint gets
+     * {@code 401 caller-not-identified}.
+     */
+    public enum AnonymousAccess { SHARED, REJECT }
+
+    public String getNamespace() {
+        return namespace;
+    }
+
+    public void setNamespace(String namespace) {
+        this.namespace = namespace == null ? "" : namespace;
+    }
+
+    public String getKeySecret() {
+        return keySecret;
+    }
+
+    public void setKeySecret(String keySecret) {
+        this.keySecret = keySecret == null ? "" : keySecret;
+    }
+
+    public java.util.List<String> getCallerHeaders() {
+        return callerHeaders;
+    }
+
+    public void setCallerHeaders(java.util.List<String> callerHeaders) {
+        this.callerHeaders = callerHeaders == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(callerHeaders);
+    }
+
+    public AnonymousAccess getAnonymousAccess() {
+        return anonymousAccess;
+    }
+
+    public void setAnonymousAccess(AnonymousAccess anonymousAccess) {
+        this.anonymousAccess = java.util.Objects.requireNonNull(anonymousAccess, "anonymousAccess");
+    }
+
+    /** What to do with the key when the finished response is too large or not text and so cannot be replayed. */
+    private UnreplayableResponsePolicy onUnreplayableResponse = UnreplayableResponsePolicy.RELEASE;
+
+    /** What to do with the key when the response status is 5xx. */
+    private ServerErrorPolicy onServerError = ServerErrorPolicy.RELEASE;
+
+    /**
+     * {@code RELEASE}: delete the record, so a retry runs the handler again (the default, and what the README has
+     * always said). {@code BLOCK}: keep a record that says the request finished, and answer a retry with
+     * {@code 409 response-not-replayable} without running the handler again. Use {@code BLOCK} where running twice
+     * is worse than not being able to show the first answer, such as payments.
+     */
+    public enum UnreplayableResponsePolicy { RELEASE, BLOCK }
+
+    /**
+     * {@code RELEASE}: delete the record, so a retry runs the handler again (the default). {@code REPLAY}: save the
+     * 5xx response like any other and replay it. An exception that escapes the handler always releases the key,
+     * because there is no response to save.
+     */
+    public enum ServerErrorPolicy { RELEASE, REPLAY }
+
+    /** @return the policy for responses that cannot be replayed */
+    public UnreplayableResponsePolicy getOnUnreplayableResponse() {
+        return onUnreplayableResponse;
+    }
+
+    public void setOnUnreplayableResponse(UnreplayableResponsePolicy onUnreplayableResponse) {
+        this.onUnreplayableResponse = java.util.Objects.requireNonNull(onUnreplayableResponse, "onUnreplayableResponse");
+    }
+
+    /** @return the policy for 5xx responses */
+    public ServerErrorPolicy getOnServerError() {
+        return onServerError;
+    }
+
+    public void setOnServerError(ServerErrorPolicy onServerError) {
+        this.onServerError = java.util.Objects.requireNonNull(onServerError, "onServerError");
+    }
 
     /** Settings of the circuit breaker around the store (used only when Resilience4j is on the classpath). */
     private final CircuitBreakerProperties circuitBreaker = new CircuitBreakerProperties();

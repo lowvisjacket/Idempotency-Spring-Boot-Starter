@@ -248,4 +248,20 @@ class FingerprintHashTests {
             pool.shutdownNow();
         }
     }
+
+    @Test
+    void F19_theSameBytesUnderDifferentMediaTypesAreDifferentRequests() throws Exception {
+        HttpServletRequest json = request("POST", "http://localhost/p", "a=1", "Content-Type", "application/json");
+        HttpServletRequest text = request("POST", "http://localhost/p", "a=1", "Content-Type", "text/plain");
+
+        assertNotEquals(hash(json), hash(text));
+    }
+
+    @Test
+    void F19_aDifferentCharsetSpellingOrCaseOfTheSameMediaTypeIsTheSameRequest() throws Exception {
+        HttpServletRequest a = request("POST", "http://localhost/p", "{}", "Content-Type", "application/json");
+        HttpServletRequest b = request("POST", "http://localhost/p", "{}", "Content-Type", "Application/JSON; charset=utf-8");
+
+        assertEquals(hash(a), hash(b));
+    }
 }

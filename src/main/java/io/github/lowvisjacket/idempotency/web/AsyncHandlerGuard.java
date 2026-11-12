@@ -55,6 +55,9 @@ public final class AsyncHandlerGuard {
         if (HttpEntity.class.isAssignableFrom(type.toClass())) {
             type = type.as(HttpEntity.class).getGeneric(0);
         }
+        if (isKotlinSuspend(method)) {
+            return true;
+        }
         Class<?> raw = type.resolve(Object.class);
         for (Class<?> async : ASYNC_TYPES) {
             if (async.isAssignableFrom(raw)) {
@@ -62,6 +65,12 @@ public final class AsyncHandlerGuard {
             }
         }
         return ReactiveAdapterRegistry.getSharedInstance().getAdapter(raw) != null;
+    }
+
+    /** A Kotlin {@code suspend} function compiles to a method taking a trailing {@code Continuation}. */
+    private static boolean isKotlinSuspend(HandlerMethod method) {
+        Class<?>[] params = method.getMethod().getParameterTypes();
+        return params.length > 0 && "kotlin.coroutines.Continuation".equals(params[params.length - 1].getName());
     }
 
     /**

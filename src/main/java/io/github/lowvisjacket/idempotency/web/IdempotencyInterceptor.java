@@ -11,16 +11,16 @@ import io.github.lowvisjacket.idempotency.fingerprint.RequestWrapper;
 import io.github.lowvisjacket.idempotency.model.IdempotencyRecord;
 import io.github.lowvisjacket.idempotency.model.Status;
 import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
-import io.github.lowvisjacket.idempotency.store.StoredKeys;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.util.WebUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.security.Principal;
 import java.time.Duration;
 import java.util.*;
 
@@ -89,6 +89,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     private final IdempotencyStore store;
     private final Fingerprint fingerprint;
     private final ProblemResponseWriter writer;
+    private final CallerScope callerScope;
 
     /**
      * @param store       where records are claimed, read and kept
@@ -97,6 +98,16 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
      * @throws NullPointerException if any argument is null
      */
     public IdempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint, ProblemResponseWriter writer) {
+        this(store, fingerprint, writer, new CallerScope());
+    }
+
+    /**
+     * @param callerScope decides who the caller is and so the stored key (namespace, secret, extra identity headers)
+     * @throws NullPointerException if any argument is null
+     */
+    public IdempotencyInterceptor(IdempotencyStore store, Fingerprint fingerprint, ProblemResponseWriter writer,
+                                  CallerScope callerScope) {
+        this.callerScope = Objects.requireNonNull(callerScope, "callerScope");
         this.store = Objects.requireNonNull(store, "store");
         this.fingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
         this.writer = Objects.requireNonNull(writer, "writer");
@@ -116,6 +127,9 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (!(handler instanceof HandlerMethod method)) return true;
+        // The same request is dispatched again for an async result and for an error page. The first dispatch already
+        // decided; deciding again would find the request's own PENDING record and answer 409 to the client.
+        if (request.getDispatcherType() != DispatcherType.REQUEST) return true;
 
         Idempotent idempotent = findIdempotent(method);
         if (idempotent == null) return true;
@@ -134,18 +148,23 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
 
         Duration ttl = TtlParser.parse(idempotent.ttl());
 
-        Principal principal = request.getUserPrincipal();
-        String storedKey = StoredKeys.build(principal == null ? null : principal.getName(), key);
+        String storedKey = callerScope.storedKey(request, key);
+        if (storedKey == null) {
+            writer.write(response, ProblemType.CALLER_NOT_IDENTIFIED,
+                    "This endpoint is only available to identified callers");
+            return false;
+        }
 
         String hash;
         try {
-            RequestWrapper wrapper = request instanceof RequestWrapper already ? already : new RequestWrapper(request);
+            RequestWrapper wrapper = request instanceof RequestWrapper already ? already : RequestWrapper.withoutBody(request);
             hash = fingerprint.hash(wrapper);
         } catch (FingerprintException e) {
             return refuseBodyTooLarge(response);
         }
 
         IdempotencyRecord claimRecord = new IdempotencyRecord(storedKey, hash, null, null, 0, ttl);
+        claimRecord.setOwner(UUID.randomUUID().toString());
         IdempotencyRecord existing;
         try {
             if (store.claim(claimRecord)) {
@@ -175,14 +194,45 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             writer.write(response, ProblemType.KEY_REUSED, "This key was already used for a different request");
             return false;
         }
+        if (!existing.isReplayable()) {
+            writer.write(response, ProblemType.RESPONSE_NOT_REPLAYABLE,
+                    "The original request finished with status " + existing.getHttpStatus()
+                            + " but its response is too large or not text, so it cannot be repeated");
+            return false;
+        }
+        if (!safeToReplay(existing)) {
+            // The record does not look like anything this library wrote (the store is shared, or was tampered with).
+            // Nothing from it is sent to the client.
+            writer.write(response, ProblemType.STORE_UNAVAILABLE, "The idempotency store is unavailable",
+                    IdempotencyDefaults.STORE_RETRY_AFTER);
+            return false;
+        }
         replay(response, existing);
         return false;
     }
 
-    /** The annotation on the method, else on its class; null if neither has one. */
+    /** A saved response is only sent if its status is a real final status and its content type is one clean line. */
+    private static boolean safeToReplay(IdempotencyRecord saved) {
+        if (saved.getHttpStatus() < 200 || saved.getHttpStatus() > 599) return false;
+        String contentType = saved.getContentType();
+        if (contentType != null) {
+            for (int i = 0; i < contentType.length(); i++) {
+                char c = contentType.charAt(i);
+                if (c < 0x20 && c != '\t' || c == 0x7f) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The annotation on the method, else on its class; null if neither has one. Both lookups see through
+     * superclasses, interfaces and composed (meta) annotations, so a developer who put {@code @Idempotent} on a base
+     * controller, an interface or an annotation of their own gets the protection they expect.
+     */
     static Idempotent findIdempotent(HandlerMethod method) {
-        Idempotent onMethod = method.getMethodAnnotation(Idempotent.class);
-        return onMethod != null ? onMethod : method.getBeanType().getAnnotation(Idempotent.class);
+        Idempotent onMethod = AnnotatedElementUtils.findMergedAnnotation(method.getMethod(), Idempotent.class);
+        return onMethod != null ? onMethod
+                : AnnotatedElementUtils.findMergedAnnotation(method.getBeanType(), Idempotent.class);
     }
 
     /**
