@@ -159,6 +159,12 @@ public class CircuitBreakerIdempotencyStore implements IdempotencyStore {
         return guard(() -> idempotencyStore.delete(key));
     }
 
+    /** Guarded {@link IdempotencyStore#delete(String, String)}; same contract as {@link #delete(String)}. */
+    @Override
+    public boolean delete(String key, String owner) {
+        return guard(() -> idempotencyStore.delete(key, owner));
+    }
+
     /**
      * Guarded {@link IdempotencyStore#exists(String)}.
      *

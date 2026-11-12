@@ -151,9 +151,10 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
                 IdempotencyRecord done = new IdempotencyRecord(
                         claim.getKey(), claim.getFingerprint(), contentType, savedHeaders(wrapper), body, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
+                done.setOwner(claim.getOwner());
                 store.complete(done);
             } else {
-                store.delete(claim.getKey());
+                release(claim);
             }
         } catch (RuntimeException e) {
             log.warn("Could not settle idempotency record; it stays until its TTL ends", e);
@@ -195,9 +196,18 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         return linkedHashMap;
     }
 
+    /** Removes the claimed record, but only if this request still owns it. */
+    private void release(IdempotencyRecord claim) {
+        if (claim.getOwner() == null) {
+            store.delete(claim.getKey());
+        } else {
+            store.delete(claim.getKey(), claim.getOwner());
+        }
+    }
+
     private void deleteQuietly(IdempotencyRecord claim) {
         try {
-            store.delete(claim.getKey());
+            release(claim);
         } catch (RuntimeException e) {
             log.warn("Could not delete idempotency record after a failed request", e);
         }

@@ -23,6 +23,14 @@ public class IdempotencyRecord {
     @JsonIgnore
     private String key;
     private String fingerprint;
+
+    /**
+     * A random token that identifies the request that claimed the key. Only that request may complete or delete the
+     * record. Without it, a request whose record expired mid-flight would overwrite (or delete) the record of the
+     * next request that claimed the same key, and a third request could then run as well.
+     * May be null for a record written by a version that had no token.
+     */
+    private String owner;
     private Status status = Status.PENDING;
     /** The response's {@code Content-Type} exactly as sent (including any charset), or null if it had none. */
     private String contentType;

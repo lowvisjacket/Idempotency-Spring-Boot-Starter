@@ -146,6 +146,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         }
 
         IdempotencyRecord claimRecord = new IdempotencyRecord(storedKey, hash, null, null, 0, ttl);
+        claimRecord.setOwner(UUID.randomUUID().toString());
         IdempotencyRecord existing;
         try {
             if (store.claim(claimRecord)) {
