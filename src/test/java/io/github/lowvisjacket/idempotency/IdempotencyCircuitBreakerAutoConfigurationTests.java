@@ -65,6 +65,19 @@ class IdempotencyCircuitBreakerAutoConfigurationTests {
     }
 
     @Test
+    void F18_anApplicationThatAlreadyHasOtherCircuitBreakersStillStarts() {
+        runner.withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
+                .withBean("paymentsBreaker", CircuitBreaker.class, () -> CircuitBreaker.ofDefaults("payments"))
+                .withBean("emailBreaker", CircuitBreaker.class, () -> CircuitBreaker.ofDefaults("email"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(IdempotencyStore.class)).isInstanceOf(CircuitBreakerIdempotencyStore.class);
+                    assertThat(ReflectionTestUtils.getField(context.getBean(IdempotencyStore.class), "circuitBreaker"))
+                            .isSameAs(breakerOf(context));
+                });
+    }
+
+    @Test
     void wrapsTheRedisStoreItCreates() {
         runner.withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class)).run(context -> {
             assertThat(context).hasNotFailed();
