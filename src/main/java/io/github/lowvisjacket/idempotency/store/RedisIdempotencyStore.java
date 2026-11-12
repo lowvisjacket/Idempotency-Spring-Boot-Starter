@@ -9,7 +9,6 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.Optional;
 
-@Service
 public class RedisIdempotencyStore implements IdempotencyStore {
 
     private final StringRedisTemplate redisTemplate;

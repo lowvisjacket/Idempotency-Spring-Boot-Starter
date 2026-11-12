@@ -15,7 +15,6 @@ import java.util.HexFormat;
  * Computes a SHA-256 fingerprint of a request (method, path, query, body).
  * Stateless: the request is passed in, so one instance is safe to share across threads.
  */
-@Service
 public class Fingerprint {
 
     /**

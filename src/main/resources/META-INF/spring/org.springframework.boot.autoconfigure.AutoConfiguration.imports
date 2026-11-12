@@ -1,0 +1,2 @@
+io.github.lowvisjacket.idempotency.autoconfigure.IdempotencyStoreAutoConfiguration
+io.github.lowvisjacket.idempotency.autoconfigure.IdempotencyAutoConfiguration
