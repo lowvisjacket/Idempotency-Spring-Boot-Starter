@@ -14,6 +14,7 @@ import io.github.lowvisjacket.idempotency.store.IdempotencyStore;
 import io.github.lowvisjacket.idempotency.store.StoredKeys;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.util.WebUtils;
@@ -180,10 +181,15 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    /** The annotation on the method, else on its class; null if neither has one. */
+    /**
+     * The annotation on the method, else on its class; null if neither has one. Both lookups see through
+     * superclasses, interfaces and composed (meta) annotations, so a developer who put {@code @Idempotent} on a base
+     * controller, an interface or an annotation of their own gets the protection they expect.
+     */
     static Idempotent findIdempotent(HandlerMethod method) {
-        Idempotent onMethod = method.getMethodAnnotation(Idempotent.class);
-        return onMethod != null ? onMethod : method.getBeanType().getAnnotation(Idempotent.class);
+        Idempotent onMethod = AnnotatedElementUtils.findMergedAnnotation(method.getMethod(), Idempotent.class);
+        return onMethod != null ? onMethod
+                : AnnotatedElementUtils.findMergedAnnotation(method.getBeanType(), Idempotent.class);
     }
 
     /**
