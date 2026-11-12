@@ -20,7 +20,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Finishes what the interceptor started: after the controller has run, saves its response (or removes the claim)
@@ -149,7 +149,7 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         try {
             if (saveable) {
                 IdempotencyRecord done = new IdempotencyRecord(
-                        claim.getKey(), claim.getFingerprint(), contentType, body, status, claim.getTtl());
+                        claim.getKey(), claim.getFingerprint(), contentType, savedHeaders(wrapper), body, status, claim.getTtl());
                 done.setStatus(Status.COMPLETED);
                 store.complete(done);
             } else {
@@ -158,6 +158,41 @@ public class ResponseCaptureFilter extends OncePerRequestFilter {
         } catch (RuntimeException e) {
             log.warn("Could not settle idempotency record; it stays until its TTL ends", e);
         }
+    }
+
+    /**
+     * The response headers to save with the record.
+     *
+     * <p>Steps:
+     * <ol>
+     *   <li>Make an empty {@code LinkedHashMap<String, List<String>>} (it keeps insertion order).</li>
+     *   <li>Loop over {@link IdempotencyDefaults#REPLAYED_RESPONSE_HEADERS}, in that order. For each {@code name}:
+     *     <ol type="a">
+     *       <li>Call {@code response.getHeaders(name)}. It returns a {@code Collection<String>} with every value of
+     *           that header, matches the name ignoring case (so a controller that wrote {@code location} is found),
+     *           and returns an empty collection, never null, when the header is absent.</li>
+     *       <li>If the collection is empty, skip to the next name.</li>
+     *       <li>Otherwise {@code map.put(name, new ArrayList<>(values))}. Use {@code name} from the list, not
+     *           anything from the response, so the stored spelling is always {@code Location}, {@code ETag}, ...
+     *           Copy the values: the collection belongs to the response.</li>
+     *     </ol></li>
+     *   <li>Return the map. If nothing matched it is simply empty, never null.</li>
+     * </ol>
+     *
+     * <p>Not your job here: filtering by status (the caller already decided this response is saved), touching
+     * {@code Content-Type} (it has its own field), and changing or removing any header from the response (the client
+     * must still receive all of them, including the ones not saved).
+     *
+     * @param response the response the controller wrote
+     * @return name to values, in the order of the allow-list
+     */
+    private static Map<String, List<String>> savedHeaders(HttpServletResponse response) {
+        LinkedHashMap<String, List<String>> linkedHashMap = new LinkedHashMap<>();
+        for (String header : IdempotencyDefaults.REPLAYED_RESPONSE_HEADERS) {
+            if (response.getHeaders(header).isEmpty()) continue;
+            linkedHashMap.put(header, new ArrayList<>(response.getHeaders(header)));
+        }
+        return linkedHashMap;
     }
 
     private void deleteQuietly(IdempotencyRecord claim) {

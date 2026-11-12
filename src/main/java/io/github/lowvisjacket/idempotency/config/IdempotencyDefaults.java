@@ -1,6 +1,7 @@
 package io.github.lowvisjacket.idempotency.config;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * The one place for values that more than one class needs (sizes, names, defaults).
@@ -38,6 +39,14 @@ public final class IdempotencyDefaults {
      * Absent means "this request did not claim anything" (plain endpoint, refusal, or replay).
      */
     public static final String CLAIM_ATTRIBUTE = "io.github.lowvisjacket.idempotency.CLAIM";
+
+    /**
+     * The only response headers saved with a record and replayed, spelled the way they are stored and sent. Anything
+     * else (Set-Cookie, Authorization-like values, Date, Content-Length, per-request ids) is deliberately not kept:
+     * it is either private, or wrong for a later request. Content-Type has its own field.
+     */
+    public static final List<String> REPLAYED_RESPONSE_HEADERS =
+            List.of("Location", "Content-Location", "ETag", "Content-Language");
 
     /** Response header added to every replayed response, with the value {@code true}, so clients can tell a replay from a first run. */
     public static final String REPLAY_HEADER = "Idempotency-Replayed";

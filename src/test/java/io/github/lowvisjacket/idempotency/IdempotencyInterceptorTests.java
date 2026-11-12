@@ -60,8 +60,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * </ul>
  *
  * <p>The store is an in-memory fake with the same atomic claim as Redis, plus call counters and switches to make
- * it fail or lose races on purpose. Replay is tested on status, body and the marker header only; storing and
- * replaying response headers waits for the multi-header record change.
+ * it fail or lose races on purpose. Replayed response headers have their own test class,
+ * {@link ReplayedHeadersTests}.
  */
 class IdempotencyInterceptorTests {
 
@@ -113,8 +113,8 @@ class IdempotencyInterceptorTests {
         }
 
         private static IdempotencyRecord copy(IdempotencyRecord r) {
-            IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getContentType(), r.getBody(),
-                    r.getHttpStatus(), r.getTtl());
+            IdempotencyRecord c = new IdempotencyRecord(r.getKey(), r.getFingerprint(), r.getContentType(),
+                    r.getHeaders(), r.getBody(), r.getHttpStatus(), r.getTtl());
             c.setStatus(r.getStatus());
             return c;
         }

@@ -83,6 +83,36 @@ class IdempotencyEndToEndTests {
     }
 
     @Test
+    void aReplayCarriesTheLocationAndETagOfTheFirstResponseButNotItsCookie() throws Exception {
+        String key = newKey();
+        MvcResult first = send(post("/shipments").header(HEADER, key));
+        MvcResult replay = send(post("/shipments").header(HEADER, key));
+
+        assertEquals("/shipments/1", first.getResponse().getHeader("Location"));
+        assertEquals("session=secret-1", first.getResponse().getHeader("Set-Cookie"));
+        assertEquals(201, replay.getResponse().getStatus());
+        assertEquals("shipment-1", replay.getResponse().getContentAsString());
+        assertEquals("/shipments/1", replay.getResponse().getHeader("Location"));
+        assertEquals("\"v1\"", replay.getResponse().getHeader("ETag"));
+        assertEquals("true", replay.getResponse().getHeader("Idempotency-Replayed"));
+        assertNull(replay.getResponse().getHeader("Set-Cookie"));
+        assertEquals(1, api.shipments.get());
+    }
+
+    @Test
+    void theCookieIsNeverWrittenToRedis() throws Exception {
+        String key = newKey();
+        send(post("/shipments").header(HEADER, key));
+
+        IdempotencyRecord saved = store.find(StoredKeys.build(null, key)).orElseThrow();
+        assertEquals(java.util.List.of("/shipments/1"), saved.getHeaders().get("Location"));
+        assertFalse(saved.getHeaders().containsKey("Set-Cookie"));
+        String raw = redis.opsForValue().get(StoredKeys.build(null, key));
+        assertNotNull(raw);
+        assertFalse(raw.contains("secret"), raw);
+    }
+
+    @Test
     void controllerStillReceivesTheWholeRequestBody() throws Exception {
         send(order(newKey(), JSON));
         assertEquals(JSON, api.lastBody);
@@ -348,6 +378,7 @@ class IdempotencyEndToEndTests {
     @RestController
     public static class Api {
         final AtomicInteger orders = new AtomicInteger();
+        final AtomicInteger shipments = new AtomicInteger();
         final AtomicInteger empties = new AtomicInteger();
         final AtomicInteger jsons = new AtomicInteger();
         final AtomicInteger plain = new AtomicInteger();
@@ -361,7 +392,7 @@ class IdempotencyEndToEndTests {
         volatile CountDownLatch slowRelease = new CountDownLatch(1);
 
         void reset() {
-            for (AtomicInteger c : new AtomicInteger[]{orders, jsons, empties, plain, explosions, broken, rejected, big, slow}) {
+            for (AtomicInteger c : new AtomicInteger[]{orders, shipments, jsons, empties, plain, explosions, broken, rejected, big, slow}) {
                 c.set(0);
             }
             lastBody = null;
@@ -374,6 +405,16 @@ class IdempotencyEndToEndTests {
         public ResponseEntity<String> create(@RequestBody String body) {
             lastBody = body;
             return ResponseEntity.status(201).body("order-" + orders.incrementAndGet());
+        }
+
+        @Idempotent
+        @PostMapping("/shipments")
+        public ResponseEntity<String> shipment() {
+            int n = shipments.incrementAndGet();
+            return ResponseEntity.created(java.net.URI.create("/shipments/" + n))
+                    .header("ETag", "\"v" + n + "\"")
+                    .header("Set-Cookie", "session=secret-" + n)
+                    .body("shipment-" + n);
         }
 
         @Idempotent

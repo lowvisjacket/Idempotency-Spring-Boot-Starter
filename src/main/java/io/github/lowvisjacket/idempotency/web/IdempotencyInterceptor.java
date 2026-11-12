@@ -22,10 +22,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Decides, before a controller runs, whether a request on an {@code @Idempotent} endpoint may run, must wait,
@@ -220,11 +217,57 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         if (saved.getContentType() != null) {
             response.setContentType(saved.getContentType());
         }
+        replayHeaders(response, saved);
         if (saved.getBody() != null) {
             if (saved.getContentType() == null) {
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             }
             response.getOutputStream().write(saved.getBody().getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * Adds the saved headers to the replayed response.
+     *
+     * <p>Steps:
+     * <ol>
+     *   <li>Loop over {@link IdempotencyDefaults#REPLAYED_RESPONSE_HEADERS} ({@code allowed} is the current name).
+     *       The loop is over the allow-list, not over the record, so a name the list does not know is never reached.</li>
+     *   <li>Loop over {@code saved.getHeaders().entrySet()}. Skip an entry unless
+     *       {@code allowed.equalsIgnoreCase(entry.getKey())} (a record from an older or odd writer may use another
+     *       case).</li>
+     *   <li>For each {@code value} in {@code entry.getValue()}:
+     *     <ol type="a">
+     *       <li>skip it if it is {@code null};</li>
+     *       <li>skip it if it contains {@code '\r'} or {@code '\n'} ({@code value.indexOf('\r') >= 0 || ...}): a
+     *           stored value like {@code "/x\r\nSet-Cookie: a=b"} would otherwise add a second header;</li>
+     *       <li>otherwise {@code response.addHeader(allowed, value)}. Pass {@code allowed}, not the stored name, so the
+     *           spelling is the list's. Use {@code addHeader}, not {@code setHeader}: {@code setHeader} would keep only
+     *           the last of several values.</li>
+     *     </ol></li>
+     * </ol>
+     *
+     * <p>Notes: {@code saved.getHeaders()} is never null (an old record gives an empty map), so there is no null
+     * check on the map and nothing to do for it. Because only list names are ever added, {@code Idempotency-Replayed}
+     * and {@code Content-Type} cannot be touched; that is a result of the loop, not an extra check. It is called from
+     * {@code replay} after the status and content type are set and before the body is written.
+     *
+     * @param response the replay being written
+     * @param saved    the stored record
+     */
+    private void replayHeaders(HttpServletResponse response, IdempotencyRecord saved) {
+        for (String header : IdempotencyDefaults.REPLAYED_RESPONSE_HEADERS) {
+            for (Map.Entry<String, List<String>> entry : saved.getHeaders().entrySet()) {
+                if (!header.equalsIgnoreCase(entry.getKey())) {
+                    continue;
+                }
+                for (String value : entry.getValue()) {
+                    if (value == null || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+                        continue;
+                    }
+                    response.addHeader(header, value);
+                }
+            }
         }
     }
 
