@@ -24,8 +24,8 @@ Idempotency-Key: abc123             Idempotency-Key: abc123             Idempote
                                          Idempotency-Replayed: true          Idempotency-Replayed: true
 ```
 
-> **Status: in development, not yet on Maven Central.** The behaviour below is implemented and tested; the
-> coordinates in the quick start are what the first release will use.
+> **Status: in development, not yet released.** The behaviour below is implemented and tested; the coordinates in the
+> quick start are what the first release will use.
 
 ## Requirements
 
