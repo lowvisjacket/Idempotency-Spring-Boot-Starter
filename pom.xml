@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>io.github.lowvisjacket</groupId>
 	<artifactId>idempotency-spring-boot-starter</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0</version>
 	<name>Idempotency Spring Boot Starter</name>
 	<description>Makes POST, PUT and PATCH endpoints safe to retry: annotate a controller method with @Idempotent and a repeated request with the same Idempotency-Key gets the saved response instead of running twice.</description>
 	<url>https://github.com/lowvisjacket/Idempotency-Spring-Boot-Starter</url>
